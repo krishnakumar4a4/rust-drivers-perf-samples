@@ -1,0 +1,62 @@
+;
+; sample_kmdf_with_10x_traces.inf
+;
+
+[Version]
+Signature   = "$WINDOWS NT$"
+Class       = System
+ClassGuid   = {4D36E97D-E325-11CE-BFC1-08002BE10318}
+Provider    = %ManufacturerName%
+CatalogFile = sample_kmdf_with_10x_traces.cat
+DriverVer   = ; TODO: set DriverVer in stampinf property pages
+PnpLockdown = 1
+
+[DestinationDirs]
+DefaultDestDir = 13
+
+[SourceDisksNames]
+1 = %DiskName%,,,""
+
+[SourceDisksFiles]
+sample_kmdf_with_10x_traces.sys  = 1,,
+
+;*****************************************
+; Install Section
+;*****************************************
+
+[Manufacturer]
+%ManufacturerName% = Standard,NT$ARCH$.10.0...16299 ; %13% support introduced in build 16299
+
+[Standard.NT$ARCH$.10.0...16299]
+%sample_kmdf_with_10x_traces.DeviceDesc% = sample_kmdf_with_10x_traces_Device, Root\sample_kmdf_with_10x_traces ; TODO: edit hw-id
+
+[sample_kmdf_with_10x_traces_Device.NT]
+CopyFiles = File_Copy
+
+[File_Copy]
+sample_kmdf_with_10x_traces.sys
+
+;-------------- Service installation
+[sample_kmdf_with_10x_traces_Device.NT.Services]
+AddService = sample_kmdf_with_10x_traces,%SPSVCINST_ASSOCSERVICE%, sample_kmdf_with_10x_traces_Service_Inst
+
+; -------------- KMDF driver install sections
+[sample_kmdf_with_10x_traces_Service_Inst]
+DisplayName    = %sample_kmdf_with_10x_traces.SVCDESC%
+ServiceType    = 1               ; SERVICE_KERNEL_DRIVER
+StartType      = 3               ; SERVICE_DEMAND_START
+ErrorControl   = 1               ; SERVICE_ERROR_NORMAL
+ServiceBinary  = %13%\sample_kmdf_with_10x_traces.sys
+
+[sample_kmdf_with_10x_traces_Device.NT.Wdf]
+KmdfService = sample_kmdf_with_10x_traces, sample_kmdf_with_10x_traces_wdfsect
+
+[sample_kmdf_with_10x_traces_wdfsect]
+KmdfLibraryVersion = $KMDFVERSION$
+
+[Strings]
+SPSVCINST_ASSOCSERVICE = 0x00000002
+ManufacturerName = "Rust for Drivers"
+DiskName = "KMDF Installation Disk"
+sample_kmdf_with_10x_traces.DeviceDesc = "Sample KMDF 100-Trace Device"
+sample_kmdf_with_10x_traces.SVCDESC = "Sample KMDF 100-Trace Service"
