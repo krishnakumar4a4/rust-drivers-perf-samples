@@ -696,6 +696,7 @@ checksum = "ba73ea9cf16a25df0c8caa16c51acb937d5712a8429db78a3ee29d5dcacd3a65"
 [[package]]
 name = "wdf"
 version = "0.3.0"
+source = "git+https://github.com/krishnakumar4a4/windows-drivers-rs?branch=wdf-wpp-rust-native-frontend-impl-3#3a6b7a24fe579809a90553c71465218a439853a8"
 dependencies = [
  "bitflags",
  "paste",
@@ -711,6 +712,7 @@ dependencies = [
 [[package]]
 name = "wdf-macros"
 version = "0.3.0"
+source = "git+https://github.com/krishnakumar4a4/windows-drivers-rs?branch=wdf-wpp-rust-native-frontend-impl-3#3a6b7a24fe579809a90553c71465218a439853a8"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -720,6 +722,7 @@ dependencies = [
 [[package]]
 name = "wdk"
 version = "0.3.1"
+source = "git+https://github.com/krishnakumar4a4/windows-drivers-rs?branch=wdf-wpp-rust-native-frontend-impl-3#3a6b7a24fe579809a90553c71465218a439853a8"
 dependencies = [
  "cfg-if",
  "tracing",
@@ -731,6 +734,7 @@ dependencies = [
 [[package]]
 name = "wdk-alloc"
 version = "0.3.1"
+source = "git+https://github.com/krishnakumar4a4/windows-drivers-rs?branch=wdf-wpp-rust-native-frontend-impl-3#3a6b7a24fe579809a90553c71465218a439853a8"
 dependencies = [
  "tracing",
  "tracing-subscriber",
@@ -741,6 +745,7 @@ dependencies = [
 [[package]]
 name = "wdk-build"
 version = "0.4.0"
+source = "git+https://github.com/krishnakumar4a4/windows-drivers-rs?branch=wdf-wpp-rust-native-frontend-impl-3#3a6b7a24fe579809a90553c71465218a439853a8"
 dependencies = [
  "anyhow",
  "bindgen",
@@ -763,6 +768,7 @@ dependencies = [
 [[package]]
 name = "wdk-macros"
 version = "0.4.0"
+source = "git+https://github.com/krishnakumar4a4/windows-drivers-rs?branch=wdf-wpp-rust-native-frontend-impl-3#3a6b7a24fe579809a90553c71465218a439853a8"
 dependencies = [
  "cfg-if",
  "fs4",
@@ -778,10 +784,12 @@ dependencies = [
 [[package]]
 name = "wdk-panic"
 version = "0.3.1"
+source = "git+https://github.com/krishnakumar4a4/windows-drivers-rs?branch=wdf-wpp-rust-native-frontend-impl-3#3a6b7a24fe579809a90553c71465218a439853a8"
 
 [[package]]
 name = "wdk-sys"
 version = "0.4.0"
+source = "git+https://github.com/krishnakumar4a4/windows-drivers-rs?branch=wdf-wpp-rust-native-frontend-impl-3#3a6b7a24fe579809a90553c71465218a439853a8"
 dependencies = [
  "anyhow",
  "bindgen",
@@ -952,6 +960,7 @@ checksum = "589f6da84c646204747d1270a2a5661ea66ed1cced2631d546fdfb155959f9ec"
 [[package]]
 name = "wpp"
 version = "0.1.0"
+source = "git+https://github.com/krishnakumar4a4/windows-drivers-rs?branch=wdf-wpp-rust-native-frontend-impl-3#3a6b7a24fe579809a90553c71465218a439853a8"
 dependencies = [
  "wpp-macros",
 ]
@@ -959,6 +968,7 @@ dependencies = [
 [[package]]
 name = "wpp-macros"
 version = "0.1.0"
+source = "git+https://github.com/krishnakumar4a4/windows-drivers-rs?branch=wdf-wpp-rust-native-frontend-impl-3#3a6b7a24fe579809a90553c71465218a439853a8"
 dependencies = [
  "proc-macro2",
  "quote",

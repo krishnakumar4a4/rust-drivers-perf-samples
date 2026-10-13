@@ -134,7 +134,8 @@ $results | Format-Table -AutoSize Driver,
     @{ n = "Full build 1";        e = { Format-Duration $_.FullBuild1_s } },
     @{ n = "Full build 2";        e = { Format-Duration $_.FullBuild2_s } },
     @{ n = "Driver-only build 1"; e = { Format-Duration $_.DriverOnlyBuild1_s } },
-    @{ n = "Driver-only build 2"; e = { Format-Duration $_.DriverOnlyBuild2_s } } | Out-Host
+    @{ n = "Driver-only build 2"; e = { Format-Duration $_.DriverOnlyBuild2_s } } |
+    Out-String -Width 240 | Write-Host
 Write-Host "Results appended to $ResultsCsv"
 if ($failed) {
     Write-Warning "Failed drivers (not in the CSV): $($failed -join ', ')"

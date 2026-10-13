@@ -12,11 +12,11 @@ target-kmdf-version-minor = 33
 crate-type = ["cdylib"]
 
 [build-dependencies]
-wdk-build = { path = "../../repos/wdr-3/crates/wdk-build" }
+wdk-build = { git = "https://github.com/krishnakumar4a4/windows-drivers-rs", branch = "wdf-wpp-rust-native-frontend-impl-3" }
 
 [dependencies]
-wdf = { path = "../../repos/wdr-3/crates/wdf" }
-wpp = { path = "../../repos/wdr-3/crates/wpp", features = ["kernel_mode"] }
+wdf = { git = "https://github.com/krishnakumar4a4/windows-drivers-rs", branch = "wdf-wpp-rust-native-frontend-impl-3" }
+wpp = { git = "https://github.com/krishnakumar4a4/windows-drivers-rs", branch = "wdf-wpp-rust-native-frontend-impl-3", features = ["kernel_mode"] }
 
 [features]
 default = []

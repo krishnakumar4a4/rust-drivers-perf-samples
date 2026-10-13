@@ -13,6 +13,9 @@ The build scripts work on every top-level folder that has a `Cargo.toml`.
 
 ## Prerequisites
 
+The samples obtain their WDR crates from `krishnakumar4a4/windows-drivers-rs`, branch
+`wdf-wpp-rust-native-frontend-impl-3`; no sibling repository checkout is required.
+
 - The `stage1` rustup toolchain (`rustc +stage1`). It doesn't ship a cargo, so `cargo +stage1`
   uses rustup's fallback cargo, which must be a recent nightly.
 - The measureme `summarize` tool on `PATH`, used by `aggregate-self-profile.py`:
@@ -129,6 +132,27 @@ sample-kmdf-no-tracing   278.9s (04:38)   261.8s (04:21)     9.3s (00:09)       
 
 For steadier numbers, stop other builds from running at the same time, for example
 rust-analyzer's check-on-save.
+
+### GitHub Actions
+
+Run **Build experiment** from the repository's **Actions** tab using **Run workflow**.
+Choose `All`, `NonDummy`, or `Dummy` for the driver set. The workflow runs the four builds
+sequentially per driver on a single Windows x64 runner using `-WdkBuild`.
+
+It builds `gurry/rust` commit `8a0ad0dea37c2692810b183d3c4aee60cb5f228f` from
+`add-codeview-annotation-intrinsic` locally and links the compiler and standard library as
+the `stage1` rustup toolchain. This revision provides the `core::hint::codeview_annotation`
+API required by the tracing samples. Nightly supplies the fallback Cargo.
+
+WDK 10.0.26100 and LLVM 17.0.6 use the setup actions from the same WDR branch as the
+dependencies. `cargo-wdk` is installed from that branch's checkout, not crates.io.
+The experiment's formatted timing table appears in the **Run build experiment** log.
+Download `build-experiment-results.csv` from the **build-experiment-results** artifact;
+completed drivers' results are uploaded even if a later driver fails.
+
+The custom compiler is built before measurement and is not included in the CSV timings.
+The workflow intentionally has no build matrix or driver build cache; compiler bootstrap
+and all driver measurements have a six-hour job limit.
 
 ## aggregate-self-profile.py
 
