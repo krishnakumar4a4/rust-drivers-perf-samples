@@ -15,13 +15,16 @@
     appended to -ResultsCsv so runs can be compared over time.
 
     With -WdkBuild the exact same experiment uses `cargo +<toolchain> wdk build` instead of
-    `cargo +<toolchain> build`.
+    `cargo +<toolchain> build`. With -Release every build uses the release profile.
 
 .EXAMPLE
     .\run-build-experiment.ps1
 
 .EXAMPLE
     .\run-build-experiment.ps1 -WdkBuild
+
+.EXAMPLE
+    .\run-build-experiment.ps1 -Release -ResultsCsv build-experiment-release.csv
 
 .EXAMPLE
     .\run-build-experiment.ps1 -Drivers sample-kmdf-no-tracing,sample-kmdf-with-traces
@@ -42,10 +45,13 @@ param(
     # Use `cargo wdk build` (compile + package/sign) instead of `cargo build`.
     [switch] $WdkBuild,
 
+    # Build with the release profile instead of the dev profile.
+    [switch] $Release,
+
     # rustup toolchain used for the builds.
     [string] $Toolchain = "stage1",
 
-    # Extra arguments passed through to the cargo build command (e.g. --profile release).
+    # Extra arguments passed through to the cargo build command (use -Release for the release profile).
     [string[]] $CargoArgs = @(),
 
     # CSV file (relative to this script or absolute) that each experiment's results are appended to.
@@ -77,7 +83,20 @@ $driverNames = @($driverNames | ForEach-Object { Get-TraceOrder $_ } |
     Sort-Object Dummy, Multiplier, Name | ForEach-Object Name)
 if (-not $driverNames) { throw "No drivers match -DriverSet $DriverSet" }
 
+$cargoProfile = if ($Release) { "release" } else { "dev" }
 $command = if ($WdkBuild) { "cargo +$Toolchain wdk build" } else { "cargo +$Toolchain build" }
+if ($Release) { $command += " --profile release" }
+
+# Export-Csv -Append fails (or drops columns) when the existing file has different columns, e.g. a CSV
+# written before the Profile column was added.
+$csvColumns = "Timestamp", "Driver", "Command", "Profile", "CargoArgs",
+              "FullBuild1_s", "FullBuild2_s", "DriverOnlyBuild1_s", "DriverOnlyBuild2_s"
+if ((Test-Path $ResultsCsv) -and (Get-Item $ResultsCsv).Length -gt 0) {
+    $existingColumns = (Get-Content $ResultsCsv -TotalCount 1) -split ',' | ForEach-Object { $_.Trim('"') }
+    if (Compare-Object $existingColumns $csvColumns -SyncWindow 0) {
+        throw "$ResultsCsv has different columns ($($existingColumns -join ', ')); use a new -ResultsCsv file."
+    }
+}
 $steps = @(
     @{ Label = "Full build 1";        Incremental = $false; Key = "full_build_seconds" }
     @{ Label = "Full build 2";        Incremental = $false; Key = "full_build_seconds" }
@@ -100,6 +119,7 @@ foreach ($driver in $driverNames) {
                 CargoArgs   = $CargoArgs
                 Incremental = $step.Incremental
                 WdkBuild    = [bool]$WdkBuild
+                Release     = [bool]$Release
             }
             & $buildScript @params | Out-Host
 
@@ -118,6 +138,7 @@ foreach ($driver in $driverNames) {
         Timestamp          = $experimentStart.ToString("o")
         Driver             = $driver
         Command            = $command
+        Profile            = $cargoProfile
         CargoArgs          = $CargoArgs -join " "
         FullBuild1_s       = $times[0]
         FullBuild2_s       = $times[1]

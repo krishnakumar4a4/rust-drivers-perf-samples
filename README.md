@@ -37,10 +37,10 @@ Builds each driver with `rustc -Zself-profile` and records the build's wall-cloc
 For each driver it:
 
 1. Cleans. By default it runs `cargo clean` and deletes `<driver>\self-profile`. With
-   `-Incremental` it runs `cargo clean -p <driver>` only.
+   `-Incremental` it runs `cargo clean -p <driver>` only, for the profile being built.
 2. Builds with `-Zself-profile=<driver>\self-profile`, added to the rustflags from the driver's
    `.cargo\config.toml`. The default command is `cargo +stage1 build`; with `-WdkBuild` it's
-   `cargo +stage1 wdk build`.
+   `cargo +stage1 wdk build`. Builds use the dev profile, or the release profile with `-Release`.
 3. Writes the build time to `<driver>\self-profile\build-time.json`.
 
 The per-crate profiles (`*.mm_profdata`) stay in `<driver>\self-profile` for
@@ -50,15 +50,17 @@ The per-crate profiles (`*.mm_profdata`) stay in `<driver>\self-profile` for
 |---|---|
 | `-Drivers a,b` | Build only these driver folders. Default: all of them. |
 | `-WdkBuild` | Build, package and sign with `cargo +stage1 wdk build`. Default: compile and link with `cargo +stage1 build`. |
-| `-Incremental` | Rebuild only the driver crate and reuse the dependencies from the last full build. Keeps the dependency profiles and replaces only the driver crate's profile. |
+| `-Release` | Build with the release profile (`--profile release`; the drivers set `lto = true`). Output goes to `target\release`. Default: dev profile, `target\debug`. |
+| `-Incremental` | Rebuild only the driver crate and reuse the dependencies from the last full build. Keeps the dependency profiles and replaces only the driver crate's profile. The last full build must have used the same profile (dev or `-Release`); otherwise the script stops. |
 | `-MeasureUnprofiled` | Before the profiled build, time a separate clean build without `-Zself-profile`. Can't be combined with `-Incremental`. |
 | `-Toolchain <name>` | rustup toolchain. Default: `stage1`. |
-| `-CargoArgs @(...)` | Extra arguments for the cargo build command, e.g. `@('--profile','release')`. |
+| `-CargoArgs @(...)` | Extra arguments for the cargo build command, e.g. `@('--target-arch','arm64')` with `-WdkBuild`. Use `-Release` rather than `--release`/`--profile`. |
 | `-SelfProfileEvents <list>` | Value for `-Zself-profile-events`, e.g. `default,args`. |
 
 ```powershell
 .\build-self-profile.ps1                                           # full build of every driver
 .\build-self-profile.ps1 -WdkBuild                                 # same, with cargo wdk build
+.\build-self-profile.ps1 -Release                                  # full release build of every driver
 .\build-self-profile.ps1 -Drivers sample-kmdf-no-tracing           # one driver
 .\build-self-profile.ps1 -Drivers sample-kmdf-no-tracing -Incremental   # driver crate only
 .\build-self-profile.ps1 -MeasureUnprofiled                        # also time an unprofiled build
@@ -68,8 +70,9 @@ The per-crate profiles (`*.mm_profdata`) stay in `<driver>\self-profile` for
 
 Each successful build writes `<driver>\self-profile\build-time.json`:
 
-- A full build creates a new file with `full_build_seconds`, `full_build_command` and
-  `full_build_timestamp`. With `-MeasureUnprofiled` it also has `unprofiled_full_build_seconds`.
+- A full build creates a new file with `profile` (`dev` or `release`), `full_build_seconds`,
+  `full_build_command` and `full_build_timestamp`. With `-MeasureUnprofiled` it also has
+  `unprofiled_full_build_seconds`.
 - `-Incremental` keeps the full-build values and adds or replaces `incremental_build_seconds`,
   `incremental_build_command` and `incremental_build_timestamp`.
 
@@ -92,8 +95,9 @@ in a row:
 
 It prints the four times in that order for each driver, and appends one row per driver to
 `build-experiment-results.csv` as soon as that driver finishes. The CSV columns are `Timestamp`,
-`Driver`, `Command`, `CargoArgs`, `FullBuild1_s`, `FullBuild2_s`, `DriverOnlyBuild1_s` and
-`DriverOnlyBuild2_s`.
+`Driver`, `Command`, `Profile`, `CargoArgs`, `FullBuild1_s`, `FullBuild2_s`, `DriverOnlyBuild1_s`
+and `DriverOnlyBuild2_s`. If the CSV file already exists with different columns (for example
+one written before the `Profile` column was added), the script stops; pass a new `-ResultsCsv`.
 
 Drivers without dummy traces run first (no-tracing, then 1x, 10x and 100x traces), followed by
 the `*-dummy-traces` drivers.
@@ -103,6 +107,7 @@ the `*-dummy-traces` drivers.
 | `-Drivers a,b` | Run only for these driver folders. Default: all of them. |
 | `-DriverSet All\|NonDummy\|Dummy` | Run all drivers, only the ones without dummy traces, or only the `*-dummy-traces` ones. Default: `All`. |
 | `-WdkBuild` | Run the same experiment with `cargo +stage1 wdk build`. |
+| `-Release` | Run the same experiment with the release profile. |
 | `-Toolchain <name>` | rustup toolchain. Default: `stage1`. |
 | `-CargoArgs @(...)` | Extra cargo arguments, passed through. |
 | `-ResultsCsv <file>` | CSV file the results are appended to. Default: `build-experiment-results.csv`. |
@@ -110,6 +115,7 @@ the `*-dummy-traces` drivers.
 ```powershell
 .\run-build-experiment.ps1                                         # cargo build, all drivers
 .\run-build-experiment.ps1 -WdkBuild                               # cargo wdk build, all drivers
+.\run-build-experiment.ps1 -Release -ResultsCsv build-experiment-release.csv   # release profile
 .\run-build-experiment.ps1 -DriverSet NonDummy                     # only drivers without dummy traces
 .\run-build-experiment.ps1 -Drivers sample-kmdf-no-tracing,sample-kmdf-with-traces
 ```
@@ -145,3 +151,8 @@ python aggregate-self-profile.py --clean-profiles --clean-targets  # delete prof
 
 The tables, except the wall-clock one, show compiler CPU time summed across all rustc processes.
 Builds run many compilers in parallel, so these totals are larger than the wall-clock time.
+
+The script prints the cargo profile of each driver's last build (from `build-time.json`) and
+warns if the drivers were built with different profiles, since dev and release numbers aren't
+comparable. The binary size is read from that profile's folder (`target\debug` or
+`target\release`).
