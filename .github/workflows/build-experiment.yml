@@ -41,12 +41,12 @@ jobs:
         with:
           repository: gurry/rust
           ref: 8a0ad0dea37c2692810b183d3c4aee60cb5f228f
-          path: .github/rust-compiler
+          path: r
           fetch-depth: 0
       - name: Install nightly Cargo
         uses: dtolnay/rust-toolchain@nightly
       - name: Build and install stage1
-        working-directory: .github/rust-compiler
+        working-directory: r
         run: |
           @'
           change-id = "ignore"
