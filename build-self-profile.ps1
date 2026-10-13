@@ -1,7 +1,6 @@
 <#
 .SYNOPSIS
-    Builds every driver crate with rustc -Zself-profile and collects the driver crate's
-    profile data (.mm_profdata + crox Chrome trace) into a single top-level folder.
+    Builds every driver crate with rustc -Zself-profile and records the build's wall-clock time.
 
 .DESCRIPTION
     For each driver folder (a top-level folder containing a Cargo.toml):
@@ -10,10 +9,7 @@
       2. Runs `cargo +<toolchain> build` (or `cargo +<toolchain> wdk build` with -WdkBuild) with
          `-Zself-profile=<driver>\self-profile` added to the rustflags from the driver's
          .cargo\config.toml.
-      3. Runs `crox` on the driver crate's .mm_profdata and writes the Chrome trace as
-         <OutputDir>\<crate_name>.json.
-      4. Copies the driver crate's .mm_profdata to <OutputDir>.
-      5. Records the wall-clock time of the build(s) in <driver>\self-profile\build-time.json.
+      3. Records the wall-clock time of the build(s) in <driver>\self-profile\build-time.json.
 
     With -MeasureUnprofiled, a separate clean build without -Zself-profile is timed first,
     so the real build time can be compared with the profiled one (profiling adds overhead).
@@ -26,9 +22,6 @@
 
 .EXAMPLE
     .\build-self-profile.ps1 -Drivers sample-kmdf-no-tracing,sample-kmdf-with-traces -Incremental
-
-.EXAMPLE
-    .\build-self-profile.ps1 -SkipBuild    # only re-run crox / copy on existing profile data
 
 .EXAMPLE
     .\build-self-profile.ps1 -MeasureUnprofiled    # also time a clean build without -Zself-profile
@@ -44,15 +37,9 @@ param(
     # rustup toolchain used for the build.
     [string] $Toolchain = "stage1",
 
-    # Folder (relative to this script or absolute) that receives the .mm_profdata and .json files.
-    [string] $OutputDir = "sample-kmdf-mm_profdata",
-
     # Only rebuild the driver crate (cargo clean -p <crate>) and replace just its profile in
     # <driver>\self-profile, keeping the dependency profiles from the last full build.
     [switch] $Incremental,
-
-    # Skip cleaning and building; just run crox and copy existing driver crate profile data.
-    [switch] $SkipBuild,
 
     # Before the profiled build, time a separate clean build without -Zself-profile.
     # Not supported with -Incremental (changing RUSTFLAGS would rebuild every dependency).
@@ -66,9 +53,6 @@ param(
 
     # Optional value for -Zself-profile-events (e.g. "default,args").
     [string] $SelfProfileEvents,
-
-    # Optional crox --minimum-duration filter in microseconds.
-    [int] $CroxMinimumDuration = 0,
 
     # Extra arguments passed to `cargo build` (e.g. --profile release), or to `cargo wdk build`
     # with -WdkBuild (e.g. --profile release, --target-arch arm64).
@@ -156,14 +140,8 @@ function Save-BuildTime([string] $profileDir, [string] $driverName, [string] $cr
 }
 
 if ($MeasureUnprofiled -and $Incremental) { throw "-MeasureUnprofiled cannot be combined with -Incremental." }
-if ($MeasureUnprofiled -and $SkipBuild) { throw "-MeasureUnprofiled cannot be combined with -SkipBuild." }
 
-foreach ($tool in @("cargo", "crox")) {
-    if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { throw "'$tool' was not found on PATH." }
-}
-
-if (-not [System.IO.Path]::IsPathRooted($OutputDir)) { $OutputDir = Join-Path $PSScriptRoot $OutputDir }
-New-Item -ItemType Directory -Force $OutputDir | Out-Null
+if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) { throw "'cargo' was not found on PATH." }
 
 $driverDirs = Get-ChildItem -Directory $PSScriptRoot | Where-Object { Test-Path (Join-Path $_.FullName "Cargo.toml") }
 if ($Drivers) {
@@ -181,103 +159,80 @@ try {
         $profileDir = Join-Path $driver.FullName "self-profile"
         Write-Host "`n===== $($driver.Name) ($crateFile) =====" -ForegroundColor Cyan
 
-        $buildTime = $null
         $unprofiledTime = $null
-        if (-not $SkipBuild) {
-            Push-Location $driver.FullName
-            try {
-                if ($Incremental) {
-                    & cargo "+$Toolchain" clean -p $crate
-                } else {
-                    & cargo "+$Toolchain" clean
-                    Remove-Item -Recurse -Force $profileDir -ErrorAction SilentlyContinue
-                }
-                if ($LASTEXITCODE -ne 0) { throw "cargo clean failed for $($driver.Name)" }
-                New-Item -ItemType Directory -Force $profileDir | Out-Null
-                Wait-TargetDir $driver.FullName
-
-                if ($MeasureUnprofiled) {
-                    # Separate wall-clock step: a clean build with only the config rustflags (no
-                    # -Zself-profile), then clean again so the profiled build also starts from scratch.
-                    $env:RUSTFLAGS = @(Get-ConfigRustflags $driver.FullName) -join " "
-                    Write-Host "Unprofiled build for wall-clock time: RUSTFLAGS=$env:RUSTFLAGS" -ForegroundColor Yellow
-                    $unprofiledTime = Invoke-TimedBuild $crate
-                    Write-Host "Unprofiled build took $($unprofiledTime.ToString('hh\:mm\:ss\.fff'))" -ForegroundColor Yellow
-                    & cargo "+$Toolchain" clean
-                    if ($LASTEXITCODE -ne 0) { throw "cargo clean failed for $($driver.Name)" }
-                    Wait-TargetDir $driver.FullName
-                }
-
-                $existing = @(Get-ChildItem $profileDir -Filter *.mm_profdata | ForEach-Object Name)
-
-                # The profile path must stay the same across runs: RUSTFLAGS is part of cargo's
-                # fingerprint, so changing it would rebuild every dependency.
-                $flags = @(Get-ConfigRustflags $driver.FullName) + "-Zself-profile=$profileDir"
-                if ($SelfProfileEvents) { $flags += "-Zself-profile-events=$SelfProfileEvents" }
-                $env:RUSTFLAGS = $flags -join " "
-                Write-Host "RUSTFLAGS=$env:RUSTFLAGS"
-
-                $buildTime = Invoke-TimedBuild $crate
-
-                if ($Incremental) {
-                    # The rebuild also re-runs the driver's build script and cargo's `___` probe, and
-                    # profile names aren't unique per crate (build_script_build, host/target copies).
-                    # Keep only the new driver crate profile; drop its old one and every other new file
-                    # so aggregate-self-profile.py doesn't double count.
-                    $added = Get-ChildItem $profileDir -Filter *.mm_profdata | Where-Object Name -notin $existing
-                    $new = $added | Where-Object Name -like "$crateFile-*" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-                    if (-not $new) { throw "Build did not produce $crateFile-*.mm_profdata" }
-                    $stale = @(Get-ChildItem $profileDir -Filter "$crateFile-*.mm_profdata" | Where-Object Name -ne $new.Name) +
-                             @($added | Where-Object Name -ne $new.Name)
-                    foreach ($f in $stale) {
-                        Remove-Item (Join-Path $profileDir "summaries\$($f.BaseName).json") -ErrorAction SilentlyContinue
-                        Remove-Item -Force $f.FullName
-                    }
-                }
-
-                Save-BuildTime $profileDir $driver.Name $crate ([bool]$Incremental) $buildTime $unprofiledTime
-            } finally {
-                $env:RUSTFLAGS = $savedRustflags
-                Pop-Location
+        Push-Location $driver.FullName
+        try {
+            if ($Incremental) {
+                & cargo "+$Toolchain" clean -p $crate
+            } else {
+                & cargo "+$Toolchain" clean
+                Remove-Item -Recurse -Force $profileDir -ErrorAction SilentlyContinue
             }
+            if ($LASTEXITCODE -ne 0) { throw "cargo clean failed for $($driver.Name)" }
+            New-Item -ItemType Directory -Force $profileDir | Out-Null
+            Wait-TargetDir $driver.FullName
+
+            if ($MeasureUnprofiled) {
+                # Separate wall-clock step: a clean build with only the config rustflags (no
+                # -Zself-profile), then clean again so the profiled build also starts from scratch.
+                $env:RUSTFLAGS = @(Get-ConfigRustflags $driver.FullName) -join " "
+                Write-Host "Unprofiled build for wall-clock time: RUSTFLAGS=$env:RUSTFLAGS" -ForegroundColor Yellow
+                $unprofiledTime = Invoke-TimedBuild $crate
+                Write-Host "Unprofiled build took $($unprofiledTime.ToString('hh\:mm\:ss\.fff'))" -ForegroundColor Yellow
+                & cargo "+$Toolchain" clean
+                if ($LASTEXITCODE -ne 0) { throw "cargo clean failed for $($driver.Name)" }
+                Wait-TargetDir $driver.FullName
+            }
+
+            $existing = @(Get-ChildItem $profileDir -Filter *.mm_profdata | ForEach-Object Name)
+
+            # The profile path must stay the same across runs: RUSTFLAGS is part of cargo's
+            # fingerprint, so changing it would rebuild every dependency.
+            $flags = @(Get-ConfigRustflags $driver.FullName) + "-Zself-profile=$profileDir"
+            if ($SelfProfileEvents) { $flags += "-Zself-profile-events=$SelfProfileEvents" }
+            $env:RUSTFLAGS = $flags -join " "
+            Write-Host "RUSTFLAGS=$env:RUSTFLAGS"
+
+            $buildTime = Invoke-TimedBuild $crate
+
+            if ($Incremental) {
+                # The rebuild also re-runs the driver's build script and cargo's `___` probe, and
+                # profile names aren't unique per crate (build_script_build, host/target copies).
+                # Keep only the new driver crate profile; drop its old one and every other new file
+                # so aggregate-self-profile.py doesn't double count.
+                $added = Get-ChildItem $profileDir -Filter *.mm_profdata | Where-Object Name -notin $existing
+                $new = $added | Where-Object Name -like "$crateFile-*" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+                if (-not $new) { throw "Build did not produce $crateFile-*.mm_profdata" }
+                $stale = @(Get-ChildItem $profileDir -Filter "$crateFile-*.mm_profdata" | Where-Object Name -ne $new.Name) +
+                         @($added | Where-Object Name -ne $new.Name)
+                foreach ($f in $stale) {
+                    Remove-Item (Join-Path $profileDir "summaries\$($f.BaseName).json") -ErrorAction SilentlyContinue
+                    Remove-Item -Force $f.FullName
+                }
+            }
+
+            Save-BuildTime $profileDir $driver.Name $crate ([bool]$Incremental) $buildTime $unprofiledTime
+        } finally {
+            $env:RUSTFLAGS = $savedRustflags
+            Pop-Location
         }
 
+        # Sanity check that the build produced the driver crate's profile.
         $profdata = Get-ChildItem $profileDir -Filter "$crateFile-*.mm_profdata" -ErrorAction SilentlyContinue |
             Sort-Object LastWriteTime -Descending | Select-Object -First 1
         if (-not $profdata) { throw "No $crateFile-*.mm_profdata found in $profileDir" }
 
-        # crox always writes chrome_profiler.json to the current directory, so run it in a scratch folder.
-        $scratch = Join-Path ([System.IO.Path]::GetTempPath()) "crox-$crateFile-$PID"
-        New-Item -ItemType Directory -Force $scratch | Out-Null
-        Push-Location $scratch
-        try {
-            $croxArgs = @()
-            if ($CroxMinimumDuration -gt 0) { $croxArgs += @("--minimum-duration", $CroxMinimumDuration) }
-            & crox @croxArgs (Join-Path $profdata.DirectoryName $profdata.BaseName)
-            if ($LASTEXITCODE -ne 0) { throw "crox failed for $($profdata.FullName)" }
-            $json = Join-Path $OutputDir "$crateFile.json"
-            Move-Item -Force (Join-Path $scratch "chrome_profiler.json") $json
-        } finally {
-            Pop-Location
-            Remove-Item -Recurse -Force $scratch -ErrorAction SilentlyContinue
-        }
-
-        Get-ChildItem $OutputDir -Filter "$crateFile-*.mm_profdata" | Where-Object Name -ne $profdata.Name | Remove-Item -Force
-        Copy-Item -Force $profdata.FullName $OutputDir
-
         $results += [pscustomobject]@{
-            Driver      = $driver.Name
-            Command     = if ($SkipBuild) { "-" } else { "cargo $(Get-BuildCommand)" }
-            BuildTime   = if ($buildTime) { $buildTime.ToString("hh\:mm\:ss") } else { "skipped" }
-            Unprofiled  = if ($unprofiledTime) { $unprofiledTime.ToString("hh\:mm\:ss") } else { "-" }
-            Profiles    = (Get-ChildItem $profileDir -Filter *.mm_profdata).Count
-            MmProfdata  = $profdata.Name
-            ChromeTrace = "$crateFile.json"
+            Driver        = $driver.Name
+            Command       = "cargo $(Get-BuildCommand)"
+            BuildTime     = $buildTime.ToString("hh\:mm\:ss")
+            Unprofiled    = if ($unprofiledTime) { $unprofiledTime.ToString("hh\:mm\:ss") } else { "-" }
+            Profiles      = (Get-ChildItem $profileDir -Filter *.mm_profdata).Count
+            DriverProfile = $profdata.Name
         }
     }
 } finally {
     $env:RUSTFLAGS = $savedRustflags
 }
 
-Write-Host "`nOutput: $OutputDir" -ForegroundColor Green
 $results | Format-Table -AutoSize

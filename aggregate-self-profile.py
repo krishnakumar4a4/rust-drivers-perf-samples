@@ -35,7 +35,6 @@ from collections import defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-DEFAULT_OUTPUT_DIR = "sample-kmdf-mm_profdata"  # build-self-profile.ps1 -OutputDir default
 
 # Ordered: first matching rule wins. Patterns are regexes matched against the event label.
 # Run with --labels to see which raw labels land in which phase (and what ends up in "Other").
@@ -193,19 +192,12 @@ def package_crate_name(driver_dir: Path) -> str:
     return driver_dir.name.replace("-", "_")
 
 
-def clean_profiles(driver_dirs, output_dir: Path):
+def clean_profiles(driver_dirs):
     for d in driver_dirs:
         prof_dir = d / "self-profile"
         if prof_dir.exists():
             print(f"Removing {prof_dir}", flush=True)
             shutil.rmtree(prof_dir)
-        if output_dir.is_dir():
-            crate = package_crate_name(d)
-            # Only the files build-self-profile.ps1 generates; leave anything else in the folder alone.
-            for f in [*output_dir.glob(f"{crate}-*.mm_profdata"), output_dir / f"{crate}.json"]:
-                if f.is_file():
-                    print(f"Removing {f}", flush=True)
-                    f.unlink()
 
 
 def clean_targets(driver_dirs, toolchain: str):
@@ -329,12 +321,9 @@ def main():
     ap.add_argument("--jobs", type=int, default=os.cpu_count() or 4)
     ap.add_argument("--summarize", default="summarize", help="path to measureme summarize")
     ap.add_argument("--clean-profiles", action="store_true",
-                    help="delete <driver>\\self-profile (profiles, cached summaries, build-time.json) and the "
-                         "driver's .mm_profdata/.json in --output-dir, then exit")
+                    help="delete <driver>\\self-profile (profiles, cached summaries, build-time.json), then exit")
     ap.add_argument("--clean-targets", action="store_true",
                     help="run `cargo clean` in each driver folder (removes target\\ artifacts), then exit")
-    ap.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR,
-                    help=f"build-self-profile.ps1 output folder cleaned by --clean-profiles (default: {DEFAULT_OUTPUT_DIR})")
     ap.add_argument("--toolchain", default="stage1", help="rustup toolchain for --clean-targets (default: stage1)")
     args = ap.parse_args()
 
@@ -342,8 +331,7 @@ def main():
 
     if args.clean_profiles or args.clean_targets:
         if args.clean_profiles:
-            out = Path(args.output_dir)
-            clean_profiles(dirs, out if out.is_absolute() else ROOT / out)
+            clean_profiles(dirs)
         if args.clean_targets:
             clean_targets(dirs, args.toolchain)
         return

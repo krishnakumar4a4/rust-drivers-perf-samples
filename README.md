@@ -15,8 +15,8 @@ The build scripts work on every top-level folder that has a `Cargo.toml`.
 
 - The `stage1` rustup toolchain (`rustc +stage1`). It doesn't ship a cargo, so `cargo +stage1`
   uses rustup's fallback cargo, which must be a recent nightly.
-- The measureme tools `crox` and `summarize` on `PATH`:
-  `cargo install --git https://github.com/rust-lang/measureme crox summarize`
+- The measureme `summarize` tool on `PATH`, used by `aggregate-self-profile.py`:
+  `cargo install --git https://github.com/rust-lang/measureme summarize`
 - `cargo-wdk` and the WDK, if you build with `-WdkBuild`.
 - Python 3.8 or later, for `aggregate-self-profile.py`.
 
@@ -32,8 +32,7 @@ for the linker map file.
 
 ## build-self-profile.ps1
 
-Builds each driver with `rustc -Zself-profile`, records the build's wall-clock time and collects
-the driver crate's profile data.
+Builds each driver with `rustc -Zself-profile` and records the build's wall-clock time.
 
 For each driver it:
 
@@ -43,21 +42,19 @@ For each driver it:
    `.cargo\config.toml`. The default command is `cargo +stage1 build`; with `-WdkBuild` it's
    `cargo +stage1 wdk build`.
 3. Writes the build time to `<driver>\self-profile\build-time.json`.
-4. Runs `crox` on the driver crate's profile and copies the `.mm_profdata` and Chrome trace
-   (`<crate>.json`) to `sample-kmdf-mm_profdata\`.
+
+The per-crate profiles (`*.mm_profdata`) stay in `<driver>\self-profile` for
+`aggregate-self-profile.py`.
 
 | Parameter | Description |
 |---|---|
 | `-Drivers a,b` | Build only these driver folders. Default: all of them. |
 | `-WdkBuild` | Build, package and sign with `cargo +stage1 wdk build`. Default: compile and link with `cargo +stage1 build`. |
 | `-Incremental` | Rebuild only the driver crate and reuse the dependencies from the last full build. Keeps the dependency profiles and replaces only the driver crate's profile. |
-| `-MeasureUnprofiled` | Before the profiled build, time a separate clean build without `-Zself-profile`. Can't be combined with `-Incremental` or `-SkipBuild`. |
-| `-SkipBuild` | Don't clean or build; only rerun `crox` and the copy on the existing profiles. |
+| `-MeasureUnprofiled` | Before the profiled build, time a separate clean build without `-Zself-profile`. Can't be combined with `-Incremental`. |
 | `-Toolchain <name>` | rustup toolchain. Default: `stage1`. |
 | `-CargoArgs @(...)` | Extra arguments for the cargo build command, e.g. `@('--profile','release')`. |
 | `-SelfProfileEvents <list>` | Value for `-Zself-profile-events`, e.g. `default,args`. |
-| `-CroxMinimumDuration <us>` | `crox --minimum-duration` filter, in microseconds. |
-| `-OutputDir <dir>` | Where the driver crate's profile and Chrome trace are copied. Default: `sample-kmdf-mm_profdata`. |
 
 ```powershell
 .\build-self-profile.ps1                                           # full build of every driver
@@ -65,7 +62,6 @@ For each driver it:
 .\build-self-profile.ps1 -Drivers sample-kmdf-no-tracing           # one driver
 .\build-self-profile.ps1 -Drivers sample-kmdf-no-tracing -Incremental   # driver crate only
 .\build-self-profile.ps1 -MeasureUnprofiled                        # also time an unprofiled build
-.\build-self-profile.ps1 -SkipBuild                                # only regenerate the Chrome traces
 ```
 
 ### build-time.json

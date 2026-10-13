@@ -1,5 +1,4 @@
 self-profile/
-sample-kmdf-mm_profdata/
 *.pyc
 *.pyo
 __pycache__/
