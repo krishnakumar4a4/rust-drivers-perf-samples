@@ -1,0 +1,9 @@
+[build]
+rustflags = [
+  "-C",
+  "target-feature=+crt-static",
+]
+
+# cargo-wdk expects the linker map in target\<profile>\deps; keep the classic build-dir layout.
+[unstable]
+build-dir-new-layout = false

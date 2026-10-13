@@ -1,0 +1,29 @@
+[package]
+name = "sample-kmdf-with-10x-dummy-traces"
+version = "0.1.0"
+edition = "2024"
+
+[package.metadata.wdk.driver-model]
+driver-type = "KMDF"
+kmdf-version-major = 1
+target-kmdf-version-minor = 33
+
+[lib]
+crate-type = ["cdylib"]
+
+[build-dependencies]
+wdk-build = { path = "../../repos/wdr-3/crates/wdk-build" }
+
+[dependencies]
+wdf = { path = "../../repos/wdr-3/crates/wdf" }
+
+[features]
+default = []
+nightly = []
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+lto = true
+panic = "abort"

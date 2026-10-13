@@ -1,8 +1,0 @@
-"Timestamp","Driver","Command","CargoArgs","FullBuild1_s","FullBuild2_s","DriverOnlyBuild1_s","DriverOnlyBuild2_s"
-"2026-10-13T14:32:21.0479510+05:30","sample-kmdf-no-tracing","cargo +stage1 wdk build","","270.563","284.127","19.366","15.886"
-"2026-10-13T14:32:21.0479510+05:30","sample-kmdf-with-traces","cargo +stage1 wdk build","","254.103","271.579","21.846","20.77"
-"2026-10-13T14:32:21.0479510+05:30","sample-kmdf-with-10x-traces","cargo +stage1 wdk build","","260.094","272.689","23.519","23.005"
-"2026-10-13T14:32:21.0479510+05:30","sample-kmdf-with-100x-traces","cargo +stage1 wdk build","","335.21","357.257","92.33","94.993"
-"2026-10-13T15:47:19.2191365+05:30","sample-kmdf-with-dummy-traces","cargo +stage1 wdk build","","279.778","279.734","23.258","16.217"
-"2026-10-13T15:47:19.2191365+05:30","sample-kmdf-with-10x-dummy-traces","cargo +stage1 wdk build","","270.579","282.494","44.191","18.191"
-"2026-10-13T15:47:19.2191365+05:30","sample-kmdf-with-100x-dummy-traces","cargo +stage1 wdk build","","271.167","302.759","32.96","27.979"

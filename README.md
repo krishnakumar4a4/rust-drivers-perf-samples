@@ -94,13 +94,18 @@ in a row:
 3. Driver-only build 1 (`-Incremental`)
 4. Driver-only build 2 (`-Incremental`)
 
-It prints the four times in that order for each driver, and appends them as one row per driver
-to `build-experiment-results.csv`. The CSV columns are `Timestamp`, `Driver`, `Command`,
-`CargoArgs`, `FullBuild1_s`, `FullBuild2_s`, `DriverOnlyBuild1_s` and `DriverOnlyBuild2_s`.
+It prints the four times in that order for each driver, and appends one row per driver to
+`build-experiment-results.csv` as soon as that driver finishes. The CSV columns are `Timestamp`,
+`Driver`, `Command`, `CargoArgs`, `FullBuild1_s`, `FullBuild2_s`, `DriverOnlyBuild1_s` and
+`DriverOnlyBuild2_s`.
+
+Drivers without dummy traces run first (no-tracing, then 1x, 10x and 100x traces), followed by
+the `*-dummy-traces` drivers.
 
 | Parameter | Description |
 |---|---|
 | `-Drivers a,b` | Run only for these driver folders. Default: all of them. |
+| `-DriverSet All\|NonDummy\|Dummy` | Run all drivers, only the ones without dummy traces, or only the `*-dummy-traces` ones. Default: `All`. |
 | `-WdkBuild` | Run the same experiment with `cargo +stage1 wdk build`. |
 | `-Toolchain <name>` | rustup toolchain. Default: `stage1`. |
 | `-CargoArgs @(...)` | Extra cargo arguments, passed through. |
@@ -109,6 +114,7 @@ to `build-experiment-results.csv`. The CSV columns are `Timestamp`, `Driver`, `C
 ```powershell
 .\run-build-experiment.ps1                                         # cargo build, all drivers
 .\run-build-experiment.ps1 -WdkBuild                               # cargo wdk build, all drivers
+.\run-build-experiment.ps1 -DriverSet NonDummy                     # only drivers without dummy traces
 .\run-build-experiment.ps1 -Drivers sample-kmdf-no-tracing,sample-kmdf-with-traces
 ```
 
