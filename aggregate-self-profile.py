@@ -214,12 +214,14 @@ WALL_CLOCK_ROWS = [
 ]
 
 
-def read_build_times(prof_dir: Path) -> dict:
+def read_build_info(prof_dir: Path):
+    """Returns (wall-clock times, cargo profile) from build-time.json. Older files have no profile (dev)."""
     f = prof_dir / "build-time.json"
     if not f.is_file():
-        return {}
+        return {}, "dev"
     data = json.loads(f.read_text(encoding="utf-8-sig"))
-    return {k: float(data[k]) for k, _ in WALL_CLOCK_ROWS if data.get(k) is not None}
+    times = {k: float(data[k]) for k, _ in WALL_CLOCK_ROWS if data.get(k) is not None}
+    return times, data.get("profile") or "dev"
 
 
 def analyze_driver(driver_dir: Path, summarize_exe: str, jobs: int, label_totals: dict):
@@ -260,10 +262,12 @@ def analyze_driver(driver_dir: Path, summarize_exe: str, jobs: int, label_totals
         if crate == driver_crate:
             driver_artifacts = {a["label"]: a["value"] for a in data.get("artifact_sizes", [])}
 
-    # `cargo build` leaves <crate>.dll in target\<profile>; `cargo wdk build` also writes <crate>.sys.
-    # Take the most recent one (target\<profile>\ or target\<triple>\<profile>\).
-    binaries = [p for pattern in ("target/*/", "target/*/*/") for ext in ("sys", "dll")
-                for p in driver_dir.glob(f"{pattern}{driver_crate}.{ext}")]
+    wall_clock, cargo_profile = read_build_info(prof_dir)
+    # `cargo build` leaves <crate>.dll in target\<profile dir>; `cargo wdk build` also writes <crate>.sys.
+    # Look in the folder of the profile that was built (target\<dir>\ or target\<triple>\<dir>\).
+    profile_dir_name = "debug" if cargo_profile == "dev" else cargo_profile
+    binaries = [p for pattern in (f"target/{profile_dir_name}/", f"target/*/{profile_dir_name}/")
+                for ext in ("sys", "dll") for p in driver_dir.glob(f"{pattern}{driver_crate}.{ext}")]
     sys_file = max(binaries, key=lambda p: p.stat().st_mtime, default=None)
     return {
         "name": driver_dir.name,
@@ -275,7 +279,8 @@ def analyze_driver(driver_dir: Path, summarize_exe: str, jobs: int, label_totals
         "crates": crates,
         "artifacts": driver_artifacts,
         "sys_size": sys_file.stat().st_size if sys_file else None,
-        "wall_clock": read_build_times(prof_dir),
+        "wall_clock": wall_clock,
+        "profile": cargo_profile,
     }
 
 
@@ -346,6 +351,12 @@ def main():
     if not drivers:
         raise SystemExit("No profile data found. Run build-self-profile.ps1 first.")
 
+    profiles = sorted({d["profile"] for d in drivers})
+    if len(profiles) > 1:
+        print(f"\nWarning: the drivers' last builds used different cargo profiles ({', '.join(profiles)}); "
+              "see the per-driver lines at the end.", file=sys.stderr)
+    print(f"\nCargo profile: {', '.join(profiles)}")
+
     wall_rows = [(k, label) for k, label in WALL_CLOCK_ROWS if any(k in d["wall_clock"] for d in drivers)]
     if wall_rows:
         label_to_key = {label: k for k, label in wall_rows}
@@ -380,7 +391,8 @@ def main():
 
     print()
     for d in drivers:
-        line = f"{d['name']}: {d['files']} rustc invocations, {d['total']:.2f}s total compiler CPU time"
+        line = (f"{d['name']} ({d['profile']} profile): {d['files']} rustc invocations, "
+                f"{d['total']:.2f}s total compiler CPU time")
         wall = d["wall_clock"].get("full_build_seconds")
         if wall:
             line += f", {wall:.1f}s wall-clock (full profiled build, {d['total'] / wall:.1f}x parallelism)"
@@ -401,6 +413,7 @@ def main():
             w = csv.writer(fh)
             w.writerow(["driver", "dimension", "key", "value"])
             for d in drivers:
+                w.writerow([d["name"], "build_info", "profile", d["profile"]])
                 for k, v in d["wall_clock"].items():
                     w.writerow([d["name"], "wall_clock_seconds", k, f"{v:.3f}"])
                 for k, v in d["phases"].items():
