@@ -7,7 +7,7 @@ on each .mm_profdata file in <driver>\\self-profile, caches the JSON output in
   * compiler phases (frontend / type-check & analysis / MIR / codegen / LLVM / linking / ...)
   * crate groups (driver crate / WDK crates / third-party dependencies)
   * per-crate totals (top N)
-  * artifact sizes for the driver crate (final .sys, object files, ...)
+  * artifact sizes for the driver crate (final .sys/.dll, object files, ...)
 
 and prints a side-by-side comparison of all drivers, ordered by trace volume
 (no-tracing, with-traces, 10x, 100x). Each dummy-trace baseline (same call sites and
@@ -268,7 +268,11 @@ def analyze_driver(driver_dir: Path, summarize_exe: str, jobs: int, label_totals
         if crate == driver_crate:
             driver_artifacts = {a["label"]: a["value"] for a in data.get("artifact_sizes", [])}
 
-    sys_file = next(driver_dir.glob(f"target/**/{driver_crate}.sys"), None)
+    # `cargo build` leaves <crate>.dll in target\<profile>; `cargo wdk build` also writes <crate>.sys.
+    # Take the most recent one (target\<profile>\ or target\<triple>\<profile>\).
+    binaries = [p for pattern in ("target/*/", "target/*/*/") for ext in ("sys", "dll")
+                for p in driver_dir.glob(f"{pattern}{driver_crate}.{ext}")]
+    sys_file = max(binaries, key=lambda p: p.stat().st_mtime, default=None)
     return {
         "name": driver_dir.name,
         "files": len(files),
@@ -357,7 +361,7 @@ def main():
     wall_rows = [(k, label) for k, label in WALL_CLOCK_ROWS if any(k in d["wall_clock"] for d in drivers)]
     if wall_rows:
         label_to_key = {label: k for k, label in wall_rows}
-        print_table("Build wall-clock time (cargo wdk build)", list(label_to_key), drivers,
+        print_table("Build wall-clock time", list(label_to_key), drivers,
                     lambda d, k: None if k is None else d["wall_clock"].get(label_to_key[k]),
                     fmt=fmt_wall, with_pct=False)
     else:
@@ -381,9 +385,9 @@ def main():
                 lambda d, k: d["total"] if k is None else d["crates"].get(k), with_pct=False)
 
     art_keys = sorted({k for d in drivers for k in d["artifacts"]})
-    rows = art_keys + ["(final .sys on disk)"]
+    rows = art_keys + ["(driver .sys/.dll on disk)"]
     print_table("Driver crate artifact sizes (bytes)", rows, drivers,
-                lambda d, k: None if k is None else (d["sys_size"] if k == "(final .sys on disk)" else d["artifacts"].get(k)),
+                lambda d, k: None if k is None else (d["sys_size"] if k == "(driver .sys/.dll on disk)" else d["artifacts"].get(k)),
                 fmt=lambda v: f"{v:,}", with_pct=False)
 
     print()

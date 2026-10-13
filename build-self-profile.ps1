@@ -7,8 +7,9 @@
     For each driver folder (a top-level folder containing a Cargo.toml):
       1. Cleans the previous build (full `cargo clean` by default, or only the driver
          crate with -Incremental) and the matching profile data in <driver>\self-profile.
-      2. Runs `cargo +<toolchain> wdk build` with `-Zself-profile=<driver>\self-profile`
-         added to the rustflags from the driver's .cargo\config.toml.
+      2. Runs `cargo +<toolchain> build` (or `cargo +<toolchain> wdk build` with -WdkBuild) with
+         `-Zself-profile=<driver>\self-profile` added to the rustflags from the driver's
+         .cargo\config.toml.
       3. Runs `crox` on the driver crate's .mm_profdata and writes the Chrome trace as
          <OutputDir>\<crate_name>.json.
       4. Copies the driver crate's .mm_profdata to <OutputDir>.
@@ -31,6 +32,9 @@
 
 .EXAMPLE
     .\build-self-profile.ps1 -MeasureUnprofiled    # also time a clean build without -Zself-profile
+
+.EXAMPLE
+    .\build-self-profile.ps1 -WdkBuild    # build + package/sign with `cargo wdk build`
 #>
 [CmdletBinding()]
 param(
@@ -54,13 +58,20 @@ param(
     # Not supported with -Incremental (changing RUSTFLAGS would rebuild every dependency).
     [switch] $MeasureUnprofiled,
 
+    # Build with `cargo +<toolchain> wdk build` (compile + package/sign) instead of the default
+    # `cargo +<toolchain> build` (compile + link only). cargo-wdk reads the linker map from
+    # target\<profile>\deps, so the driver's .cargo\config.toml keeps the classic build-dir layout
+    # ([unstable] build-dir-new-layout = false).
+    [switch] $WdkBuild,
+
     # Optional value for -Zself-profile-events (e.g. "default,args").
     [string] $SelfProfileEvents,
 
     # Optional crox --minimum-duration filter in microseconds.
     [int] $CroxMinimumDuration = 0,
 
-    # Extra arguments passed to `cargo wdk build` (e.g. --profile release).
+    # Extra arguments passed to `cargo build` (e.g. --profile release), or to `cargo wdk build`
+    # with -WdkBuild (e.g. --profile release, --target-arch arm64).
     [string[]] $CargoArgs = @()
 )
 
@@ -84,77 +95,36 @@ function Get-ConfigRustflags([string] $driverDir) {
     return [regex]::Matches($Matches[1], '"([^"]*)"') | ForEach-Object { $_.Groups[1].Value }
 }
 
-function Get-TripleForArch([string] $arch) {
-    switch -Regex ($arch) {
-        '^(amd64|x64|x86_64)$'  { return "x86_64-pc-windows-msvc" }
-        '^(arm64|aarch64)$'     { return "aarch64-pc-windows-msvc" }
-        default                 { throw "Unknown --target-arch '$arch'" }
-    }
-}
+# The cargo subcommand for the build: `cargo build` by default, `cargo wdk build` with -WdkBuild.
+function Get-BuildCommand { if ($WdkBuild) { "wdk build" } else { "build" } }
 
-# Returns target\[<triple>\]<profile>\deps for the build selected by $CargoArgs.
-function Get-DepsDir([string] $driverDir) {
-    $metadata = & cargo "+$Toolchain" metadata --format-version 1 --no-deps --manifest-path (Join-Path $driverDir "Cargo.toml") | ConvertFrom-Json
-    $profile = "debug"
-    $triple = $null
-    for ($i = 0; $i -lt $CargoArgs.Count; $i++) {
-        switch -Regex ($CargoArgs[$i]) {
-            '^(-r|--release)$'     { $profile = "release" }
-            '^--profile$'          { $profile = $CargoArgs[++$i] }
-            '^--profile=(.+)$'     { $profile = $Matches[1] }
-            '^--target$'           { $triple = $CargoArgs[++$i] }
-            '^--target=(.+)$'      { $triple = $Matches[1] }
-            '^--target-arch$'      { $triple = Get-TripleForArch $CargoArgs[++$i] }
-            '^--target-arch=(.+)$' { $triple = Get-TripleForArch $Matches[1] }
-        }
-    }
-    if ($profile -eq "dev") { $profile = "debug" }
-    $dir = $metadata.target_directory
-    if ($triple) { $dir = Join-Path $dir $triple }
-    return Join-Path $dir "$profile\deps"
-}
-
-# Translates the `cargo wdk build` arguments into the equivalent `cargo build` arguments
-# (cargo-wdk itself runs `cargo build -p <package> --manifest-path <Cargo.toml> ...`).
-function Get-CargoBuildArgs([string] $driverDir, [string] $crate) {
-    $result = @("build", "-p", $crate, "--manifest-path", (Join-Path $driverDir "Cargo.toml"))
-    for ($i = 0; $i -lt $CargoArgs.Count; $i++) {
-        switch -Regex ($CargoArgs[$i]) {
-            '^--profile$'                      { $result += @("--profile", $CargoArgs[++$i]) }
-            '^--target-arch$'                  { $result += @("--target", (Get-TripleForArch $CargoArgs[++$i])) }
-            '^--target-arch=(.+)$'             { $result += @("--target", (Get-TripleForArch $Matches[1])) }
-            '^(--verify-signature|--sample)$'  { }
-            default                            { $result += $CargoArgs[$i] }
-        }
-    }
-    return $result
-}
-
-# Times one complete driver build. Newer cargo's build-dir layout links the driver into
-# <target>\<profile>\build\<package>\<hash>\out, but cargo-wdk copies the linker map from
-# <target>\<profile>\deps, so the build runs as: `cargo build` (compile + link), copy the map
-# into deps\, then `cargo wdk build` (compilation is up to date; only packaging/signing runs).
-function Invoke-TimedBuild([string] $driverDir, [string] $crate) {
-    $crateFile = $crate.Replace("-", "_")
-    $depsDir = Get-DepsDir $driverDir
+# Times one driver build (run from the driver folder).
+function Invoke-TimedBuild([string] $crate) {
     $sw = [Diagnostics.Stopwatch]::StartNew()
-
-    & cargo "+$Toolchain" @(Get-CargoBuildArgs $driverDir $crate) | Out-Host
-    if ($LASTEXITCODE -ne 0) { throw "cargo build failed for $crate (exit $LASTEXITCODE)" }
-
-    $map = Get-ChildItem (Join-Path (Split-Path $depsDir) "build\$crate") -Recurse -Filter "$crateFile.map" -ErrorAction SilentlyContinue |
-        Sort-Object LastWriteTime -Descending | Select-Object -First 1
-    $depsMap = Join-Path $depsDir "$crateFile.map"
-    if ($map -and (-not (Test-Path $depsMap) -or $map.LastWriteTime -gt (Get-Item $depsMap).LastWriteTime)) {
-        New-Item -ItemType Directory -Force $depsDir | Out-Null
-        Copy-Item -Force $map.FullName $depsMap
+    if ($WdkBuild) {
+        & cargo "+$Toolchain" wdk build @CargoArgs | Out-Host
+    } else {
+        & cargo "+$Toolchain" build @CargoArgs | Out-Host
     }
-
-    & cargo "+$Toolchain" wdk build @CargoArgs | Out-Host
     $exit = $LASTEXITCODE
     $sw.Stop()
-    if ($exit -ne 0) { throw "cargo wdk build failed for $crate (exit $exit)" }
+    if ($exit -ne 0) { throw "cargo $(Get-BuildCommand) failed for $crate (exit $exit)" }
     return $sw.Elapsed
+}
+
+# After `cargo clean`, Windows can leave the deleted target\ folder "delete pending" while another process
+# (rust-analyzer, Defender, the search indexer) still has a handle open; creating it again then fails with
+# "Access is denied". Wait (outside the timed build) until target\ can be created.
+function Wait-TargetDir([string] $driverDir) {
+    $target = Join-Path $driverDir "target"
+    for ($i = 1; $i -le 60; $i++) {
+        try { New-Item -ItemType Directory -Force $target -ErrorAction Stop | Out-Null; return }
+        catch {
+            if ($i -eq 1) { Write-Host "Waiting for $target to become available ..." -ForegroundColor Yellow }
+            Start-Sleep -Seconds 2
+        }
+    }
+    throw "Could not create $target (still locked after 2 minutes)"
 }
 
 # Records build wall-clock times in <driver>\self-profile\build-time.json. A full build replaces the
@@ -171,11 +141,14 @@ function Save-BuildTime([string] $profileDir, [string] $driverName, [string] $cr
     $data["toolchain"] = $Toolchain
     $data["cargo_args"] = @($CargoArgs)
     $now = (Get-Date).ToString("o")
+    $command = "cargo +$Toolchain $(Get-BuildCommand)"
     if ($incremental) {
         $data["incremental_build_seconds"] = [math]::Round($profiled.TotalSeconds, 3)
+        $data["incremental_build_command"] = $command
         $data["incremental_build_timestamp"] = $now
     } else {
         $data["full_build_seconds"] = [math]::Round($profiled.TotalSeconds, 3)
+        $data["full_build_command"] = $command
         $data["full_build_timestamp"] = $now
         if ($unprofiled) { $data["unprofiled_full_build_seconds"] = [math]::Round($unprofiled.TotalSeconds, 3) }
     }
@@ -221,20 +194,18 @@ try {
                 }
                 if ($LASTEXITCODE -ne 0) { throw "cargo clean failed for $($driver.Name)" }
                 New-Item -ItemType Directory -Force $profileDir | Out-Null
-                # The linker is passed /MAP:<target>\<profile>\deps\<crate>.map, but newer cargo's
-                # build-dir layout no longer creates deps\ after a clean (LNK1104 otherwise).
-                New-Item -ItemType Directory -Force (Get-DepsDir $driver.FullName) | Out-Null
+                Wait-TargetDir $driver.FullName
 
                 if ($MeasureUnprofiled) {
                     # Separate wall-clock step: a clean build with only the config rustflags (no
                     # -Zself-profile), then clean again so the profiled build also starts from scratch.
                     $env:RUSTFLAGS = @(Get-ConfigRustflags $driver.FullName) -join " "
                     Write-Host "Unprofiled build for wall-clock time: RUSTFLAGS=$env:RUSTFLAGS" -ForegroundColor Yellow
-                    $unprofiledTime = Invoke-TimedBuild $driver.FullName $crate
+                    $unprofiledTime = Invoke-TimedBuild $crate
                     Write-Host "Unprofiled build took $($unprofiledTime.ToString('hh\:mm\:ss\.fff'))" -ForegroundColor Yellow
                     & cargo "+$Toolchain" clean
                     if ($LASTEXITCODE -ne 0) { throw "cargo clean failed for $($driver.Name)" }
-                    New-Item -ItemType Directory -Force (Get-DepsDir $driver.FullName) | Out-Null
+                    Wait-TargetDir $driver.FullName
                 }
 
                 $existing = @(Get-ChildItem $profileDir -Filter *.mm_profdata | ForEach-Object Name)
@@ -246,7 +217,7 @@ try {
                 $env:RUSTFLAGS = $flags -join " "
                 Write-Host "RUSTFLAGS=$env:RUSTFLAGS"
 
-                $buildTime = Invoke-TimedBuild $driver.FullName $crate
+                $buildTime = Invoke-TimedBuild $crate
 
                 if ($Incremental) {
                     # The rebuild also re-runs the driver's build script and cargo's `___` probe, and
@@ -296,6 +267,7 @@ try {
 
         $results += [pscustomobject]@{
             Driver      = $driver.Name
+            Command     = if ($SkipBuild) { "-" } else { "cargo $(Get-BuildCommand)" }
             BuildTime   = if ($buildTime) { $buildTime.ToString("hh\:mm\:ss") } else { "skipped" }
             Unprofiled  = if ($unprofiledTime) { $unprofiledTime.ToString("hh\:mm\:ss") } else { "-" }
             Profiles    = (Get-ChildItem $profileDir -Filter *.mm_profdata).Count
