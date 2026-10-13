@@ -3,21 +3,45 @@ param()
 
 $ErrorActionPreference = "Stop"
 
+# Mode "Wpp" emits real `trace!` statements. Mode "Dummy" emits `dummy_trace(...)` calls
+# (see <driver>\src\dummy_trace.rs) with exactly the same level, keyword, message, and fields,
+# so each dummy fixture is the no-tracing-cost baseline for the traced fixture of the same size.
 $fixtures = @(
     @{
         Path = Join-Path $PSScriptRoot "sample-kmdf-with-traces"
         Total = 10
         InstancesPerScenario = 1
+        Mode = "Wpp"
     },
     @{
         Path = Join-Path $PSScriptRoot "sample-kmdf-with-10x-traces"
         Total = 100
         InstancesPerScenario = 10
+        Mode = "Wpp"
     },
     @{
         Path = Join-Path $PSScriptRoot "sample-kmdf-with-100x-traces"
         Total = 1000
         InstancesPerScenario = 100
+        Mode = "Wpp"
+    },
+    @{
+        Path = Join-Path $PSScriptRoot "sample-kmdf-with-dummy-traces"
+        Total = 10
+        InstancesPerScenario = 1
+        Mode = "Dummy"
+    },
+    @{
+        Path = Join-Path $PSScriptRoot "sample-kmdf-with-10x-dummy-traces"
+        Total = 100
+        InstancesPerScenario = 10
+        Mode = "Dummy"
+    },
+    @{
+        Path = Join-Path $PSScriptRoot "sample-kmdf-with-100x-dummy-traces"
+        Total = 1000
+        InstancesPerScenario = 100
+        Mode = "Dummy"
     }
 )
 
@@ -35,8 +59,18 @@ function Get-Keyword([int] $scenario, [int] $instance) {
     return $keywords[($baseIndex + [math]::Floor($instance / 5)) % $keywords.Count]
 }
 
+function New-ScenarioLines([hashtable] $fixture) {
+    $lines = [System.Collections.Generic.List[string]]::new()
+    if ($fixture.Mode -eq "Dummy") {
+        $lines.Add("use crate::dummy_trace::*;")
+        $lines.Add("")
+    }
+    return , $lines
+}
+
 function Add-Trace {
     param(
+        [hashtable] $Fixture,
         [System.Collections.Generic.List[string]] $Lines,
         [string] $Level,
         [string] $Keyword,
@@ -44,13 +78,19 @@ function Add-Trace {
         [string[]] $Arguments
     )
 
-    $Lines.Add("    trace!(")
+    if ($Fixture.Mode -eq "Dummy") {
+        $Lines.Add("    dummy_trace(")
+        $lastArgumentSuffix = ","
+    } else {
+        $Lines.Add("    trace!(")
+        $lastArgumentSuffix = ""
+    }
     $Lines.Add("        $Level,")
     $Lines.Add("        $Keyword,")
     $Lines.Add("        `"$Message`",")
     $Lines.Add("        $($Arguments[0]),")
     $Lines.Add("        $($Arguments[1]),")
-    $Lines.Add("        $($Arguments[2])")
+    $Lines.Add("        $($Arguments[2])$lastArgumentSuffix")
     $Lines.Add("    );")
 }
 
@@ -64,7 +104,7 @@ function Write-RustFile([string] $path, [System.Collections.Generic.List[string]
 }
 
 function New-LiteralScenario([hashtable] $fixture, [int] $startInstance, [int] $instanceCount) {
-    $lines = [System.Collections.Generic.List[string]]::new()
+    $lines = New-ScenarioLines $fixture
     for ($instance = $startInstance; $instance -lt ($startInstance + $instanceCount); $instance++) {
         $id = "{0:D3}" -f $instance
         $suffix = "00$id"
@@ -73,7 +113,7 @@ function New-LiteralScenario([hashtable] $fixture, [int] $startInstance, [int] $
         $boolean = if (($instance % 2) -eq 0) { "true" } else { "false" }
         $lines.Add("#[inline(never)]")
         $lines.Add("fn emit_$suffix() {")
-        Add-Trace $lines (Get-Level 0 $instance) (Get-Keyword 0 $instance) `
+        Add-Trace $fixture $lines (Get-Level 0 $instance) (Get-Keyword 0 $instance) `
             "fixture-$($fixture.Total) scenario-00 instance-$id`: signed={}, unsigned={}, bool={}" `
             @("-$($signed)_i8", "$($unsigned)_u16", $boolean)
         $lines.Add("}")
@@ -89,13 +129,13 @@ function New-LiteralScenario([hashtable] $fixture, [int] $startInstance, [int] $
 }
 
 function New-SignedScenario([hashtable] $fixture, [int] $startInstance, [int] $instanceCount) {
-    $lines = [System.Collections.Generic.List[string]]::new()
+    $lines = New-ScenarioLines $fixture
     for ($instance = $startInstance; $instance -lt ($startInstance + $instanceCount); $instance++) {
         $id = "{0:D3}" -f $instance
         $suffix = "01$id"
         $lines.Add("#[inline(never)]")
         $lines.Add("fn emit_$suffix(signed_i16_$suffix`: i16, signed_i32_$suffix`: i32, signed_i64_$suffix`: i64) {")
-        Add-Trace $lines (Get-Level 1 $instance) (Get-Keyword 1 $instance) `
+        Add-Trace $fixture $lines (Get-Level 1 $instance) (Get-Keyword 1 $instance) `
             "fixture-$($fixture.Total) scenario-01 instance-$id`: i16={}, i32={}, i64={}" `
             @("signed_i16_$suffix", "signed_i32_$suffix", "signed_i64_$suffix")
         $lines.Add("}")
@@ -111,7 +151,7 @@ function New-SignedScenario([hashtable] $fixture, [int] $startInstance, [int] $i
 }
 
 function New-UnsignedScenario([hashtable] $fixture, [int] $startInstance, [int] $instanceCount) {
-    $lines = [System.Collections.Generic.List[string]]::new()
+    $lines = New-ScenarioLines $fixture
     for ($instance = $startInstance; $instance -lt ($startInstance + $instanceCount); $instance++) {
         $id = "{0:D3}" -f $instance
         $suffix = "02$id"
@@ -120,7 +160,7 @@ function New-UnsignedScenario([hashtable] $fixture, [int] $startInstance, [int] 
         $lines.Add("    let unsigned_u8_$suffix = $($instance % 256)_u8;")
         $lines.Add("    let unsigned_u32_$suffix = $([uint64]4000000000 + $instance)_u32;")
         $lines.Add("    let unsigned_u64_$suffix = $([uint64]8000000000 + $instance)_u64;")
-        Add-Trace $lines (Get-Level 2 $instance) (Get-Keyword 2 $instance) `
+        Add-Trace $fixture $lines (Get-Level 2 $instance) (Get-Keyword 2 $instance) `
             "fixture-$($fixture.Total) scenario-02 instance-$id`: u8={}, u32={}, u64={}" `
             @("unsigned_u8_$suffix", "unsigned_u32_$suffix", "unsigned_u64_$suffix")
         $lines.Add("}")
@@ -136,7 +176,7 @@ function New-UnsignedScenario([hashtable] $fixture, [int] $startInstance, [int] 
 }
 
 function New-FloatScenario([hashtable] $fixture, [int] $startInstance, [int] $instanceCount) {
-    $lines = [System.Collections.Generic.List[string]]::new()
+    $lines = New-ScenarioLines $fixture
     for ($instance = $startInstance; $instance -lt ($startInstance + $instanceCount); $instance++) {
         $id = "{0:D3}" -f $instance
         $suffix = "03$id"
@@ -146,7 +186,7 @@ function New-FloatScenario([hashtable] $fixture, [int] $startInstance, [int] $in
         $lines.Add("    let float_f32_$suffix = $($instance + 3).25_f32;")
         $lines.Add("    let float_f64_$suffix = $($instance + 30).125_f64;")
         $lines.Add("    let bool_$suffix = $boolean;")
-        Add-Trace $lines (Get-Level 3 $instance) (Get-Keyword 3 $instance) `
+        Add-Trace $fixture $lines (Get-Level 3 $instance) (Get-Keyword 3 $instance) `
             "fixture-$($fixture.Total) scenario-03 instance-$id`: f32={}, f64={}, bool={}" `
             @("float_f32_$suffix", "float_f64_$suffix", "bool_$suffix")
         $lines.Add("}")
@@ -162,7 +202,7 @@ function New-FloatScenario([hashtable] $fixture, [int] $startInstance, [int] $in
 }
 
 function New-StringScenario([hashtable] $fixture, [int] $startInstance, [int] $instanceCount) {
-    $lines = [System.Collections.Generic.List[string]]::new()
+    $lines = New-ScenarioLines $fixture
     $lines.Add("fn returned_text() -> &'static str {")
     $lines.Add("    `"returned-text`"")
     $lines.Add("}")
@@ -175,7 +215,7 @@ function New-StringScenario([hashtable] $fixture, [int] $startInstance, [int] $i
         $lines.Add("    let str_$suffix = `"variable-$suffix`";")
         $lines.Add("    let c_str_$suffix = c`"c-string-$suffix`";")
         $lines.Add("    let returned_str_$suffix = returned_text();")
-        Add-Trace $lines (Get-Level 4 $instance) (Get-Keyword 4 $instance) `
+        Add-Trace $fixture $lines (Get-Level 4 $instance) (Get-Keyword 4 $instance) `
             "fixture-$($fixture.Total) scenario-04 instance-$id`: str={}, cstr={}, returned={}" `
             @("str_$suffix", "c_str_$suffix", "returned_str_$suffix")
         $lines.Add("}")
@@ -191,7 +231,7 @@ function New-StringScenario([hashtable] $fixture, [int] $startInstance, [int] $i
 }
 
 function New-StatusScenario([hashtable] $fixture, [int] $startInstance, [int] $instanceCount) {
-    $lines = [System.Collections.Generic.List[string]]::new()
+    $lines = New-ScenarioLines $fixture
     $lines.Add("use wdf::{status_codes, IRQL, NtStatus};")
     $lines.Add("")
     $lines.Add("fn returned_usize(value: usize) -> usize {")
@@ -207,7 +247,7 @@ function New-StatusScenario([hashtable] $fixture, [int] $startInstance, [int] $i
         $lines.Add("    let irql_$suffix = IRQL::current().unwrap_or(IRQL::Passive);")
         $lines.Add("    let status_$suffix = NtStatus::from(status_codes::$status);")
         $lines.Add("    let usize_$suffix = returned_usize($($instance + 5000));")
-        Add-Trace $lines (Get-Level 5 $instance) (Get-Keyword 5 $instance) `
+        Add-Trace $fixture $lines (Get-Level 5 $instance) (Get-Keyword 5 $instance) `
             "fixture-$($fixture.Total) scenario-05 instance-$id`: irql={}, status={}, usize={}" `
             @("irql_$suffix", "status_$suffix", "usize_$suffix")
         $lines.Add("}")
@@ -223,7 +263,7 @@ function New-StatusScenario([hashtable] $fixture, [int] $startInstance, [int] $i
 }
 
 function New-PrimaryEnumScenario([hashtable] $fixture, [int] $startInstance, [int] $instanceCount) {
-    $lines = [System.Collections.Generic.List[string]]::new()
+    $lines = New-ScenarioLines $fixture
     $lines.Add("use crate::{ByteState, LongState, ShortState};")
     $lines.Add("")
     $byteVariants = @("Unknown", "Starting", "Ready")
@@ -237,7 +277,7 @@ function New-PrimaryEnumScenario([hashtable] $fixture, [int] $startInstance, [in
         $lines.Add("    let byte_state_$suffix = ByteState::$($byteVariants[$instance % 3]);")
         $lines.Add("    let short_state_$suffix = ShortState::$($shortVariants[$instance % 3]);")
         $lines.Add("    let long_state_$suffix = LongState::$($longVariants[$instance % 3]);")
-        Add-Trace $lines (Get-Level 6 $instance) (Get-Keyword 6 $instance) `
+        Add-Trace $fixture $lines (Get-Level 6 $instance) (Get-Keyword 6 $instance) `
             "fixture-$($fixture.Total) scenario-06 instance-$id`: byte={}, short={}, long={}" `
             @("byte_state_$suffix", "short_state_$suffix", "long_state_$suffix")
         $lines.Add("}")
@@ -253,18 +293,22 @@ function New-PrimaryEnumScenario([hashtable] $fixture, [int] $startInstance, [in
 }
 
 function New-GenericScenario([hashtable] $fixture, [int] $startInstance, [int] $instanceCount) {
-    $lines = [System.Collections.Generic.List[string]]::new()
+    $lines = New-ScenarioLines $fixture
     for ($instance = $startInstance; $instance -lt ($startInstance + $instanceCount); $instance++) {
         $id = "{0:D3}" -f $instance
         $suffix = "07$id"
         $lines.Add("#[inline(never)]")
-        $lines.Add("fn emit_$suffix<T, U, V>(generic_t_$suffix`: T, generic_u_$suffix`: U, generic_v_$suffix`: V)")
-        $lines.Add("where")
-        $lines.Add("    T: wpp::IntoWppField,")
-        $lines.Add("    U: wpp::IntoWppField,")
-        $lines.Add("    V: wpp::IntoWppField,")
-        $lines.Add("{")
-        Add-Trace $lines (Get-Level 7 $instance) (Get-Keyword 7 $instance) `
+        if ($fixture.Mode -eq "Dummy") {
+            $lines.Add("fn emit_$suffix<T, U, V>(generic_t_$suffix`: T, generic_u_$suffix`: U, generic_v_$suffix`: V) {")
+        } else {
+            $lines.Add("fn emit_$suffix<T, U, V>(generic_t_$suffix`: T, generic_u_$suffix`: U, generic_v_$suffix`: V)")
+            $lines.Add("where")
+            $lines.Add("    T: wpp::IntoWppField,")
+            $lines.Add("    U: wpp::IntoWppField,")
+            $lines.Add("    V: wpp::IntoWppField,")
+            $lines.Add("{")
+        }
+        Add-Trace $fixture $lines (Get-Level 7 $instance) (Get-Keyword 7 $instance) `
             "fixture-$($fixture.Total) scenario-07 instance-$id`: generic-t={}, generic-u={}, generic-v={}" `
             @("generic_t_$suffix", "generic_u_$suffix", "generic_v_$suffix")
         $lines.Add("}")
@@ -280,7 +324,7 @@ function New-GenericScenario([hashtable] $fixture, [int] $startInstance, [int] $
 }
 
 function New-SecondaryEnumScenario([hashtable] $fixture, [int] $startInstance, [int] $instanceCount) {
-    $lines = [System.Collections.Generic.List[string]]::new()
+    $lines = New-ScenarioLines $fixture
     $lines.Add("use crate::{ImplicitState, MixedState};")
     $lines.Add("")
     $lines.Add("fn returned_i32(value: i32) -> i32 {")
@@ -297,7 +341,7 @@ function New-SecondaryEnumScenario([hashtable] $fixture, [int] $startInstance, [
         $lines.Add("    let implicit_state_$suffix = ImplicitState::$($implicitVariants[$instance % 3]);")
         $lines.Add("    let mixed_state_$suffix = MixedState::$($mixedVariants[$instance % 3]);")
         $lines.Add("    let returned_i32_$suffix = returned_i32(-$($instance + 8000));")
-        Add-Trace $lines (Get-Level 8 $instance) (Get-Keyword 8 $instance) `
+        Add-Trace $fixture $lines (Get-Level 8 $instance) (Get-Keyword 8 $instance) `
             "fixture-$($fixture.Total) scenario-08 instance-$id`: implicit={}, mixed={}, returned-i32={}" `
             @("implicit_state_$suffix", "mixed_state_$suffix", "returned_i32_$suffix")
         $lines.Add("}")
@@ -313,13 +357,13 @@ function New-SecondaryEnumScenario([hashtable] $fixture, [int] $startInstance, [
 }
 
 function New-MixedScenario([hashtable] $fixture, [int] $startInstance, [int] $instanceCount) {
-    $lines = [System.Collections.Generic.List[string]]::new()
+    $lines = New-ScenarioLines $fixture
     for ($instance = $startInstance; $instance -lt ($startInstance + $instanceCount); $instance++) {
         $id = "{0:D3}" -f $instance
         $suffix = "09$id"
         $lines.Add("#[inline(never)]")
         $lines.Add("fn emit_$suffix(mixed_u8_$suffix`: u8, mixed_i16_$suffix`: i16, mixed_usize_$suffix`: usize) {")
-        Add-Trace $lines (Get-Level 9 $instance) (Get-Keyword 9 $instance) `
+        Add-Trace $fixture $lines (Get-Level 9 $instance) (Get-Keyword 9 $instance) `
             "fixture-$($fixture.Total) scenario-09 instance-$id`: u8={}, i16={}, usize={}" `
             @("mixed_u8_$suffix", "mixed_i16_$suffix", "mixed_usize_$suffix")
         $lines.Add("}")

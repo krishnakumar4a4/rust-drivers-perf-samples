@@ -10,7 +10,8 @@ on each .mm_profdata file in <driver>\\self-profile, caches the JSON output in
   * artifact sizes for the driver crate (final .sys, object files, ...)
 
 and prints a side-by-side comparison of all drivers, ordered by trace volume
-(no-tracing, with-traces, 10x, 100x).
+(no-tracing, with-traces, 10x, 100x). Each dummy-trace baseline (same call sites and
+arguments, empty callee instead of WPP) is placed directly before its traced driver.
 
 Times are summed self-times (CPU time). LLVM work runs on multiple threads, so
 the totals can be larger than the wall-clock build time. Wall-clock build times are
@@ -143,25 +144,30 @@ def crate_name_of(profdata: Path) -> str:
 
 
 def trace_order(driver_dir: Path):
-    """Sort key: no-tracing, with-traces, with-10x-traces, with-100x-traces, then anything else."""
+    """Sort key: no-tracing, then 1x, 10x, 100x trace volume, then anything else.
+
+    Within a trace volume the dummy-trace baseline sorts directly before the traced driver.
+    """
     name = driver_dir.name
     if "no-tracing" in name:
         multiplier = 0
-    elif m := re.search(r"(\d+)x-traces", name):
+    elif m := re.search(r"(\d+)x-(?:dummy-)?traces", name):
         multiplier = int(m.group(1))
-    elif "with-traces" in name:
+    elif "with-traces" in name or "with-dummy-traces" in name:
         multiplier = 1
     else:
         multiplier = float("inf")
-    return (multiplier, name)
+    return (multiplier, "dummy-traces" not in name, name)
 
 
 def column_label(driver_name: str) -> str:
-    """Table column header: no_tracing, with_traces, 10x_traces, 100x_traces."""
+    """Table column header: no_tracing, dummy_traces, with_traces, 10x_dummy_traces, 10x_traces, ..."""
     if "no-tracing" in driver_name:
         return "no_tracing"
-    if m := re.search(r"(\d+)x-traces", driver_name):
-        return f"{m.group(1)}x_traces"
+    if m := re.search(r"(\d+)x-(dummy-)?traces", driver_name):
+        return f"{m.group(1)}x_{'dummy_' if m.group(2) else ''}traces"
+    if "with-dummy-traces" in driver_name:
+        return "dummy_traces"
     if "with-traces" in driver_name:
         return "with_traces"
     return driver_name.replace("sample-kmdf-", "")
