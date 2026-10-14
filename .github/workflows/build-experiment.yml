@@ -103,6 +103,33 @@ jobs:
           # Temporarily disabled:
           # .\run-build-experiment.ps1 -Toolchain stage1 -WdkBuild -DriverSet $env:DRIVER_SET -ResultsCsv build-experiment-results.csv
           .\run-build-experiment-2.ps1 -Toolchain stage1 -WdkBuild -DriverSet $env:DRIVER_SET -ResultsCsv build-experiment-2-wdk.csv -AggregateOutput build-experiment-2-wdk-aggregate.txt
+      - name: Print profiling results
+        if: always()
+        run: |
+          $resultsCsv = "build-experiment-2-wdk.csv"
+          $aggregateOutput = "build-experiment-2-wdk-aggregate.txt"
+
+          if (Test-Path $resultsCsv) {
+            Write-Host "::group::Build times and binary sizes"
+            Import-Csv $resultsCsv |
+              Format-Table -AutoSize Driver,
+                @{ Label = "Build time (s)"; Expression = { "{0:N1}" -f [double]$_.BuildSeconds } },
+                @{ Label = "Binary"; Expression = { Split-Path $_.Binary -Leaf } },
+                @{ Label = "Binary bytes"; Expression = { "{0:N0}" -f [long]$_.BinaryBytes } } |
+              Out-String -Width 240 |
+              Write-Host
+            Write-Host "::endgroup::"
+          } else {
+            Write-Warning "Build results were not generated at $resultsCsv"
+          }
+
+          if (Test-Path $aggregateOutput) {
+            Write-Host "::group::Aggregated compiler profiling results"
+            Get-Content $aggregateOutput | Write-Host
+            Write-Host "::endgroup::"
+          } else {
+            Write-Warning "Aggregated profiling results were not generated at $aggregateOutput"
+          }
       - name: Upload experiment results
         if: always()
         uses: actions/upload-artifact@v4

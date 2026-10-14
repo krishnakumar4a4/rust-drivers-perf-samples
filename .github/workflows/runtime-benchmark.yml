@@ -54,15 +54,15 @@ jobs:
       - name: Run WPP runtime benchmark
         run: |
           $manifest = ".\runtime-bench\Cargo.toml"
-          cargo +stage1 bench --manifest-path $manifest --bench trace
+          cargo +stage1 bench --color always --manifest-path $manifest --bench trace -- --color always
       - name: Run CodeView annotation release benchmark
         run: |
           $manifest = ".\runtime-bench\Cargo.toml"
-          cargo +stage1 bench --manifest-path $manifest --bench codeview_annotation --profile release -- --save-baseline release
+          cargo +stage1 bench --color always --manifest-path $manifest --bench codeview_annotation --profile release -- --color always --save-baseline release
       - name: Run CodeView annotation debug benchmark
         run: |
           $manifest = ".\runtime-bench\Cargo.toml"
-          cargo +stage1 bench --manifest-path $manifest --bench codeview_annotation --profile dev -- --baseline release
+          cargo +stage1 bench --color always --manifest-path $manifest --bench codeview_annotation --profile dev -- --color always --baseline release
       - name: Upload Criterion results
         if: always()
         uses: actions/upload-artifact@v4
