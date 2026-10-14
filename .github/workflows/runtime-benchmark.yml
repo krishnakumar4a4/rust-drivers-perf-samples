@@ -51,7 +51,22 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "stage1 installation failed" }
           rustc +stage1 --version --verbose
           cargo +stage1 --version
-      - name: Run runtime benchmark
+      - name: Run WPP runtime benchmark
         run: |
           $manifest = ".\runtime-bench\Cargo.toml"
           cargo +stage1 bench --manifest-path $manifest --bench trace
+      - name: Run CodeView annotation release benchmark
+        run: |
+          $manifest = ".\runtime-bench\Cargo.toml"
+          cargo +stage1 bench --manifest-path $manifest --bench codeview_annotation --profile release -- --save-baseline release
+      - name: Run CodeView annotation debug benchmark
+        run: |
+          $manifest = ".\runtime-bench\Cargo.toml"
+          cargo +stage1 bench --manifest-path $manifest --bench codeview_annotation --profile dev -- --baseline release
+      - name: Upload Criterion results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-benchmark-results
+          path: runtime-bench/target/criterion
+          if-no-files-found: warn

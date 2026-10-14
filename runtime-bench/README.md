@@ -29,9 +29,15 @@ $manifest = ".\runtime-bench\Cargo.toml"
 cargo +stage1 test --manifest-path $manifest --test ffi
 cargo +stage1 bench --manifest-path $manifest --bench trace -- --test
 cargo +stage1 bench --manifest-path $manifest --bench trace
+cargo +stage1 bench --manifest-path $manifest --bench codeview_annotation --profile release -- --save-baseline release
+cargo +stage1 bench --manifest-path $manifest --bench codeview_annotation --profile dev -- --baseline release
 ```
 
 The second command smoke-tests every benchmark without collecting statistics.
+The final two commands measure the CodeView annotation scenario with optimized
+release code and unoptimized debug code. The debug run compares its measurements
+against the saved release baseline. The GitHub Actions workflow also uploads the
+Criterion data as the `runtime-benchmark-results` artifact.
 To collect a short, filtered measurement:
 
 ```powershell
@@ -74,6 +80,16 @@ allocation-free fields and a Rust string, each with neither sink, ETW only, IFR
 only, and both sinks enabled. Registration, enablement, assertions and cleanup
 are outside the timed loops. Rust strings currently include their conversion
 to the WPP field representation; the C-string case avoids that allocation.
+
+[benches/codeview_annotation.rs](benches/codeview_annotation.rs) compares
+functions with and without `codeview_annotation`. Family 1 exercises MIR
+inlining and downstream simplification. Family 2 exercises LLVM inlining with
+multiple and sole call sites. Family 3 measures elementwise loop vectorization
+with an annotation inside or before the loop and reports element throughput.
+The benchmark keeps the exported entry points visible for binary inspection and
+uses `black_box` at the input and output boundaries. Run it under both the
+release and dev profiles to observe the annotation's impact with and without
+optimization.
 
 ## Interpreting measurements
 
