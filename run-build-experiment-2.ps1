@@ -72,7 +72,8 @@ function Get-CrateFileName([string] $manifest) {
 }
 
 $driverNames = Get-ChildItem -Directory $PSScriptRoot |
-    Where-Object { Test-Path (Join-Path $_.FullName "Cargo.toml") } | ForEach-Object Name
+    Where-Object { $_.Name -like "sample-kmdf-*" -and (Test-Path (Join-Path $_.FullName "Cargo.toml")) } |
+    ForEach-Object Name
 if ($Drivers) {
     $unknown = $Drivers | Where-Object { $_ -notin $driverNames }
     if ($unknown) { throw "Unknown driver folder(s): $($unknown -join ', ')" }

@@ -94,15 +94,19 @@ jobs:
           target: amd64
       - name: Install cargo-wdk from WDR branch
         run: cargo +nightly install --path .github/wdr/crates/cargo-wdk --locked --force
-      - name: Run build experiment
+      - name: Run build experiment 2
         env:
           DRIVER_SET: ${{ inputs.driver_set || 'All' }}
         run: |
-          .\run-build-experiment.ps1 -Toolchain stage1 -WdkBuild -DriverSet $env:DRIVER_SET -ResultsCsv build-experiment-results.csv
-      - name: Upload results CSV
+          # Temporarily disabled:
+          # .\run-build-experiment.ps1 -Toolchain stage1 -WdkBuild -DriverSet $env:DRIVER_SET -ResultsCsv build-experiment-results.csv
+          .\run-build-experiment-2.ps1 -Toolchain stage1 -WdkBuild -DriverSet $env:DRIVER_SET -ResultsCsv build-experiment-2-wdk.csv -AggregateOutput build-experiment-2-wdk-aggregate.txt
+      - name: Upload experiment results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: build-experiment-results
-          path: build-experiment-results.csv
+          name: build-experiment-2-wdk-results
+          path: |
+            build-experiment-2-wdk.csv
+            build-experiment-2-wdk-aggregate.txt
           if-no-files-found: warn

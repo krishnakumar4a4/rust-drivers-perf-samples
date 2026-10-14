@@ -142,19 +142,21 @@ rust-analyzer's check-on-save.
 ### GitHub Actions
 
 Run **Build experiment** from the repository's **Actions** tab using **Run workflow**.
-Choose `All`, `NonDummy`, or `Dummy` for the driver set. The workflow runs the four builds
-sequentially per driver on a single Windows x64 runner using `-WdkBuild`.
+Choose `All`, `NonDummy`, or `Dummy` for the driver set. The workflow runs one release build per
+driver and aggregates the profiles sequentially on a single Windows x64 runner using `-WdkBuild`.
 
 It builds `gurry/rust` commit `8a0ad0dea37c2692810b183d3c4aee60cb5f228f` from
 `add-codeview-annotation-intrinsic` locally and links the compiler and standard library as
 the `stage1` rustup toolchain. This revision provides the `core::hint::codeview_annotation`
 API required by the tracing samples. Nightly supplies the fallback Cargo.
 
-WDK 10.0.26100 and LLVM 17.0.6 use the setup actions from the same WDR branch as the
-dependencies. `cargo-wdk` is installed from that branch's checkout, not crates.io.
-The experiment's formatted timing table appears in the **Run build experiment** log.
-Download `build-experiment-results.csv` from the **build-experiment-results** artifact;
-completed drivers' results are uploaded even if a later driver fails.
+WDK 10.0.26100 uses the setup action from the same WDR branch as the dependencies;
+`cargo-wdk` is installed from that branch's checkout, not crates.io. LLVM 17.0.6 is installed
+from its pinned upstream release.
+The experiment's timing table appears in the **Run build experiment 2** log.
+Download `build-experiment-2-wdk.csv` and `build-experiment-2-wdk-aggregate.txt` from the
+**build-experiment-2-wdk-results** artifact; completed drivers' results are uploaded even if a
+later driver fails.
 
 The custom compiler is built before measurement and is not included in the CSV timings.
 The workflow intentionally has no build matrix or driver build cache; compiler bootstrap
