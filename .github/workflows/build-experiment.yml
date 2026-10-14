@@ -94,6 +94,8 @@ jobs:
           target: amd64
       - name: Install cargo-wdk from WDR branch
         run: cargo +nightly install --path .github/wdr/crates/cargo-wdk --locked --force
+      - name: Install measureme summarize
+        run: cargo +nightly install --git https://github.com/rust-lang/measureme --locked --force summarize
       - name: Run build experiment 2
         env:
           DRIVER_SET: ${{ inputs.driver_set || 'All' }}

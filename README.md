@@ -152,7 +152,8 @@ API required by the tracing samples. Nightly supplies the fallback Cargo.
 
 WDK 10.0.26100 uses the setup action from the same WDR branch as the dependencies;
 `cargo-wdk` is installed from that branch's checkout, not crates.io. LLVM 17.0.6 is installed
-from its pinned upstream release.
+from its pinned upstream release. The workflow installs measureme's `summarize` tool before
+aggregating self-profile data.
 The experiment's timing table appears in the **Run build experiment 2** log.
 Download `build-experiment-2-wdk.csv` and `build-experiment-2-wdk-aggregate.txt` from the
 **build-experiment-2-wdk-results** artifact; completed drivers' results are uploaded even if a
