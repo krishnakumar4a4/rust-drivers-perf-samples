@@ -1,0 +1,27 @@
+[package]
+name = "wpp-mock-bench"
+version = "0.1.0"
+edition = "2024"
+publish = false
+license = "MIT OR Apache-2.0"
+description = "User-mode WPP macro benchmarks with native mock ETW and IFR sinks"
+
+# Keep mock kernel symbols and benchmark dependencies out of driver build graphs.
+[workspace]
+
+[dev-dependencies]
+wpp = { git = "https://github.com/krishnakumar4a4/windows-drivers-rs", branch = "wdf-wpp-rust-native-frontend-impl-3", features = ["kernel_mode"] }
+wpp-macros = { git = "https://github.com/krishnakumar4a4/windows-drivers-rs", branch = "wdf-wpp-rust-native-frontend-impl-3" }
+wdf = { path = "wdf-shim" }
+criterion = { version = "0.5.1", default-features = false, features = ["cargo_bench_support"] }
+
+[build-dependencies]
+cc = "1.2.39"
+
+[[bench]]
+name = "trace"
+harness = false
+
+[profile.bench]
+lto = true
+debug = 2
