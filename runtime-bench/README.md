@@ -86,10 +86,14 @@ functions with and without `codeview_annotation`. Family 1 exercises MIR
 inlining and downstream simplification. Family 2 exercises LLVM inlining with
 multiple and sole call sites. Family 3 measures elementwise loop vectorization
 with an annotation inside or before the loop and reports element throughput.
-The benchmark keeps the exported entry points visible for binary inspection and
-uses `black_box` at the input and output boundaries. Run it under both the
-release and dev profiles to observe the annotation's impact with and without
-optimization.
+Family 6 measures fixed-trip-count loop unrolling with an annotation inside the
+loop or in its preheader. Family 7 measures common and rare branch behavior for
+a non-vectorizable loop, then compares automatic branch handling with manually
+unswitched vectorizable loops. Family 8 exercises memset, memcpy, and popcount
+loop patterns using the target's default CPU feature set. The benchmark keeps
+the exported entry points visible for binary inspection and uses `black_box` at
+the input and output boundaries. Run it under both the release and dev profiles
+to observe the annotation's impact with and without optimization.
 
 ## Interpreting measurements
 
