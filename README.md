@@ -13,6 +13,9 @@ The build scripts work on every top-level folder that has a `Cargo.toml`.
 
 ## Prerequisites
 
+The samples obtain their WDR crates from `krishnakumar4a4/windows-drivers-rs`, branch
+`wdf-wpp-rust-native-frontend-impl-3`; no sibling repository checkout is required.
+
 - The `stage1` rustup toolchain (`rustc +stage1`). It doesn't ship a cargo, so `cargo +stage1`
   uses rustup's fallback cargo, which must be a recent nightly.
 - The measureme `summarize` tool on `PATH`, used by `aggregate-self-profile.py`:
@@ -135,6 +138,63 @@ sample-kmdf-no-tracing   278.9s (04:38)   261.8s (04:21)     9.3s (00:09)       
 
 For steadier numbers, stop other builds from running at the same time, for example
 rust-analyzer's check-on-save.
+
+### GitHub Actions
+
+Run **Build experiment** from the repository's **Actions** tab using **Run workflow**.
+Choose `All`, `NonDummy`, or `Dummy` for the driver set. The workflow runs one release build per
+driver and aggregates the profiles sequentially on a single Windows x64 runner using `-WdkBuild`.
+
+It builds `gurry/rust` commit `8a0ad0dea37c2692810b183d3c4aee60cb5f228f` from
+`add-codeview-annotation-intrinsic` locally and links the compiler and standard library as
+the `stage1` rustup toolchain. This revision provides the `core::hint::codeview_annotation`
+API required by the tracing samples. Nightly supplies the fallback Cargo.
+
+WDK 10.0.26100 uses the setup action from the same WDR branch as the dependencies;
+`cargo-wdk` is installed from that branch's checkout, not crates.io. LLVM 17.0.6 is installed
+from its pinned upstream release. The workflow installs measureme's `summarize` tool before
+aggregating self-profile data.
+The experiment's timing table appears in the **Run build experiment 2** log.
+Download `build-experiment-2-wdk.csv` and `build-experiment-2-wdk-aggregate.txt` from the
+**build-experiment-2-wdk-results** artifact; completed drivers' results are uploaded even if a
+later driver fails.
+
+The custom compiler is built before measurement and is not included in the CSV timings.
+The workflow intentionally has no build matrix or driver build cache; compiler bootstrap
+and all driver measurements have a six-hour job limit.
+## run-build-experiment-2.ps1
+
+Runs one full release build per driver and then summarizes the profiles:
+
+1. Runs `build-self-profile.ps1 -Release` (a full build) for each driver in turn: drivers
+   without dummy traces first (no-tracing, then 1x, 10x and 100x traces), then the
+   `*-dummy-traces` drivers.
+2. After each driver, appends its build wall-clock time and driver binary size to
+   `build-experiment-2-results.csv`. The binary is `<crate>.dll` with `cargo build`, or
+   `<crate>.sys` with `-WdkBuild`, from `target\release`. The CSV columns are `Timestamp`,
+   `Driver`, `Command`, `Profile`, `CargoArgs`, `BuildSeconds`, `Binary` (path relative to the
+   repo) and `BinaryBytes`.
+3. Runs `aggregate-self-profile.py` on the drivers that built successfully and writes its
+   tables to `build-experiment-2-aggregate.txt`. That file is overwritten on each run, while
+   the CSV is appended to.
+
+| Parameter | Description |
+|---|---|
+| `-Drivers a,b` | Run only for these driver folders. Default: all of them. |
+| `-DriverSet All\|NonDummy\|Dummy` | Run all drivers, only the ones without dummy traces, or only the `*-dummy-traces` ones. Default: `All`. |
+| `-WdkBuild` | Build with `cargo +stage1 wdk build --profile release` instead of `cargo +stage1 build --profile release`. |
+| `-Toolchain <name>` | rustup toolchain. Default: `stage1`. |
+| `-CargoArgs @(...)` | Extra cargo arguments, passed through. |
+| `-ResultsCsv <file>` | CSV file the results are appended to. Default: `build-experiment-2-results.csv`. |
+| `-AggregateOutput <file>` | Text file for the aggregate tables. Default: `build-experiment-2-aggregate.txt`. |
+
+```powershell
+.\run-build-experiment-2.ps1                                       # cargo build, all drivers
+.\run-build-experiment-2.ps1 -WdkBuild -ResultsCsv build-experiment-2-wdk.csv -AggregateOutput build-experiment-2-wdk-aggregate.txt
+```
+
+A full release build takes about 4–5 minutes per driver, so a run over all seven drivers
+takes about 35 minutes, plus a few minutes for the aggregation.
 
 ## aggregate-self-profile.py
 
