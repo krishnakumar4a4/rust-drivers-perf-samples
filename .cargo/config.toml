@@ -1,0 +1,3 @@
+# cargo-wdk expects the linker map in target\<profile>\deps.
+[unstable]
+build-dir-new-layout = false

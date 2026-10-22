@@ -39,7 +39,7 @@ param(
     [string[]] $Drivers,
 
     # rustup toolchain used for the build.
-    [string] $Toolchain = "stage1",
+    [string] $Toolchain = "nightly",
 
     # Only rebuild the driver crate (cargo clean -p <crate>) and replace just its profile in
     # <driver>\self-profile, keeping the dependency profiles from the last full build.
@@ -51,7 +51,7 @@ param(
 
     # Build with `cargo +<toolchain> wdk build` (compile + package/sign) instead of the default
     # `cargo +<toolchain> build` (compile + link only). cargo-wdk reads the linker map from
-    # target\<profile>\deps, so the driver's .cargo\config.toml keeps the classic build-dir layout
+    # target\<profile>\deps, so the repository's .cargo\config.toml keeps the classic build-dir layout
     # ([unstable] build-dir-new-layout = false).
     [switch] $WdkBuild,
 

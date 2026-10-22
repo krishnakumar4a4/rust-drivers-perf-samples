@@ -15,22 +15,21 @@ user-mode measurements. Do not link this package into a driver.
 ## Requirements and commands
 
 - Windows x64 MSVC and the Visual C++ build tools (for `cc`).
-- The Rust toolchain used by this checkout that implements
-  `#![feature(codeview_annotation)]` and the generic
-  `core::hint::CodeViewAnnotationArgs` API. An arbitrary stable or nightly
-  compiler is not sufficient. The commands below use the locally linked
-  `stage1` toolchain; substitute your annotation-capable toolchain name.
+- The latest nightly Rust toolchain (`rustup update nightly`), selected by the
+  repository-root `rust-toolchain.toml`. The benchmarks enable
+  `#![feature(codeview_annotation)]` and `#![feature(core_os)]` for the generic
+  `core::os::windows::CodeViewAnnotationArgs` API. No custom compiler is needed.
 - No WDK, loaded driver, ETW session, or administrator privileges are needed.
 
 From the repository root in PowerShell:
 
 ```powershell
 $manifest = ".\runtime-bench\Cargo.toml"
-cargo +stage1 test --manifest-path $manifest --test ffi
-cargo +stage1 bench --manifest-path $manifest --bench trace -- --test
-cargo +stage1 bench --manifest-path $manifest --bench trace
-cargo +stage1 bench --manifest-path $manifest --bench codeview_annotation --profile release -- --save-baseline release
-cargo +stage1 bench --manifest-path $manifest --bench codeview_annotation --profile dev -- --baseline release
+cargo +nightly test --manifest-path $manifest --test ffi
+cargo +nightly bench --manifest-path $manifest --bench trace -- --test
+cargo +nightly bench --manifest-path $manifest --bench trace
+cargo +nightly bench --manifest-path $manifest --bench codeview_annotation --profile release -- --save-baseline release
+cargo +nightly bench --manifest-path $manifest --bench codeview_annotation --profile dev -- --baseline release
 ```
 
 The second command smoke-tests every benchmark without collecting statistics.
@@ -41,7 +40,7 @@ Criterion data as the `runtime-benchmark-results` artifact.
 To collect a short, filtered measurement:
 
 ```powershell
-cargo +stage1 bench --manifest-path $manifest --bench trace -- 'etw/u64' --warm-up-time 1 --measurement-time 1 --sample-size 10
+cargo +nightly bench --manifest-path $manifest --bench trace -- 'etw/u64' --warm-up-time 1 --measurement-time 1 --sample-size 10
 ```
 
 Criterion stores results under this package's `target\criterion` directory by

@@ -415,7 +415,7 @@ dependencies = [
 [[package]]
 name = "wpp"
 version = "0.1.0"
-source = "git+https://github.com/krishnakumar4a4/windows-drivers-rs?branch=wdf-wpp-rust-native-frontend-impl-3#3a6b7a24fe579809a90553c71465218a439853a8"
+source = "git+https://github.com/krishnakumar4a4/windows-drivers-rs?branch=wdf-wpp-rust-native-frontend-impl-3#290e25fb35277054a0efda4068f274c688c223b7"
 dependencies = [
  "wpp-macros",
 ]
@@ -423,7 +423,7 @@ dependencies = [
 [[package]]
 name = "wpp-macros"
 version = "0.1.0"
-source = "git+https://github.com/krishnakumar4a4/windows-drivers-rs?branch=wdf-wpp-rust-native-frontend-impl-3#3a6b7a24fe579809a90553c71465218a439853a8"
+source = "git+https://github.com/krishnakumar4a4/windows-drivers-rs?branch=wdf-wpp-rust-native-frontend-impl-3#290e25fb35277054a0efda4068f274c688c223b7"
 dependencies = [
  "proc-macro2",
  "quote",

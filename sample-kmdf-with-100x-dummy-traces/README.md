@@ -53,5 +53,5 @@ The scenario sources are reproducible with
 `..\generate-trace-fixtures.ps1`. Build and package it with:
 
 ```powershell
-cargo +stage1 wdk build
+cargo +nightly wdk build
 ```

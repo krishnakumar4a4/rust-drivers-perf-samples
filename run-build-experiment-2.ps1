@@ -32,7 +32,7 @@ param(
     [switch] $WdkBuild,
 
     # rustup toolchain used for the builds.
-    [string] $Toolchain = "stage1",
+    [string] $Toolchain = "nightly",
 
     # Extra arguments passed through to the cargo build command.
     [string[]] $CargoArgs = @(),

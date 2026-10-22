@@ -2,6 +2,7 @@
 // License: MIT OR Apache-2.0
 
 #![feature(codeview_annotation)]
+#![feature(core_os)]
 
 use std::hint::black_box;
 

@@ -13,9 +13,9 @@ Two providers and all five tracing levels follow the existing trace fixtures.
 
 ## Build and analyze
 
-Use the same custom compiler and dependency versions as the earlier comparison.
-Keep [Cargo.lock](Cargo.lock): the upstream branch has since migrated to a different
-CodeView API and is incompatible with this older custom compiler.
+Use the latest nightly Rust (`rustup update nightly`) and the dependency versions in
+[Cargo.lock](Cargo.lock). The tracing macros now use nightly's `core::os::windows`
+CodeView API with both `codeview_annotation` and `core_os` enabled.
 
 From the repository root:
 
@@ -24,7 +24,7 @@ $env:LIBCLANG_PATH = 'C:\work\tools\LLVM17\bin'
 $env:BINDGEN_EXTRA_CLANG_ARGS = '-fms-compatibility'
 Push-Location .\sample-kmdf-safe-tracing-2
 try {
-    cargo +stage1 wdk build --sample
+    cargo +nightly wdk build --sample
     if ($LASTEXITCODE -ne 0) { throw 'Driver build failed' }
 } finally {
     Pop-Location
@@ -37,6 +37,9 @@ The resulting signed driver is
 `target\debug\sample_kmdf_safe_tracing_2_package\sample_kmdf_safe_tracing_2.sys`.
 
 ## Measured stack frames
+
+The measurements below and the linked reports are historical results from the earlier
+custom compiler, not measurements of the current nightly build.
 
 The dev/x64 build reserves **5,592 bytes** in the user `driver_entry` and **5,704 bytes**
 in `event_device_add`, including two saved-register pushes in each. Generated annotation

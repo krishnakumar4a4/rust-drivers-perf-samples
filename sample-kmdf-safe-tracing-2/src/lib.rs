@@ -1,5 +1,6 @@
 #![no_std]
 #![feature(codeview_annotation)]
+#![feature(core_os)]
 
 use wdf::{
     Device, DeviceInit, Driver, DriverConfig, DriverObject, IRQL, NtResult, NtStatus,

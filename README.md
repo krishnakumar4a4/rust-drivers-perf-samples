@@ -17,22 +17,28 @@ The build scripts work on every top-level folder that has a `Cargo.toml`.
 The samples obtain their WDR crates from `krishnakumar4a4/windows-drivers-rs`, branch
 `wdf-wpp-rust-native-frontend-impl-3`; no sibling repository checkout is required.
 
-- The `stage1` rustup toolchain (`rustc +stage1`). It doesn't ship a cargo, so `cargo +stage1`
-  uses rustup's fallback cargo, which must be a recent nightly.
+- The latest nightly Rust toolchain: `rustup update nightly`. The root
+  `rust-toolchain.toml` selects nightly for all projects; no custom compiler build is needed.
+  Tracing crates enable both `#![feature(codeview_annotation)]` and `#![feature(core_os)]`
+  for the `core::os::windows` annotation API.
 - The measureme `summarize` tool on `PATH`, used by `aggregate-self-profile.py`:
   `cargo install --git https://github.com/rust-lang/measureme summarize`
 - `cargo-wdk` and the WDK, if you build with `-WdkBuild`.
 - Python 3.8 or later, for `aggregate-self-profile.py`.
 
-Each driver's `.cargo\config.toml` sets:
+The repository-root `.cargo\config.toml` sets:
 
 ```toml
 [unstable]
 build-dir-new-layout = false
 ```
 
-This keeps cargo's classic `target\<profile>\deps` layout, which is where `cargo wdk build` looks
-for the linker map file.
+Cargo inherits this setting when invoked from the repository root or any project directory,
+including the standalone runtime benchmarks. A plain `config.toml` at the repository root
+would not be discovered by Cargo. This keeps cargo's classic `target\<profile>\deps` layout,
+which is where `cargo wdk build` looks for the linker map file. Each driver's own
+`.cargo\config.toml` still supplies its driver-specific rustflags, so invoke driver builds
+from that driver's directory rather than using only `--manifest-path` from the root.
 
 ## build-self-profile.ps1
 
@@ -43,8 +49,8 @@ For each driver it:
 1. Cleans. By default it runs `cargo clean` and deletes `<driver>\self-profile`. With
    `-Incremental` it runs `cargo clean -p <driver>` only, for the profile being built.
 2. Builds with `-Zself-profile=<driver>\self-profile`, added to the rustflags from the driver's
-   `.cargo\config.toml`. The default command is `cargo +stage1 build`; with `-WdkBuild` it's
-   `cargo +stage1 wdk build`. Builds use the dev profile, or the release profile with `-Release`.
+   `.cargo\config.toml`. The default command is `cargo +nightly build`; with `-WdkBuild` it's
+   `cargo +nightly wdk build`. Builds use the dev profile, or the release profile with `-Release`.
 3. Writes the build time to `<driver>\self-profile\build-time.json`.
 
 The per-crate profiles (`*.mm_profdata`) stay in `<driver>\self-profile` for
@@ -53,11 +59,11 @@ The per-crate profiles (`*.mm_profdata`) stay in `<driver>\self-profile` for
 | Parameter | Description |
 |---|---|
 | `-Drivers a,b` | Build only these driver folders. Default: all of them. |
-| `-WdkBuild` | Build, package and sign with `cargo +stage1 wdk build`. Default: compile and link with `cargo +stage1 build`. |
+| `-WdkBuild` | Build, package and sign with `cargo +nightly wdk build`. Default: compile and link with `cargo +nightly build`. |
 | `-Release` | Build with the release profile (`--profile release`; the drivers set `lto = true`). Output goes to `target\release`. Default: dev profile, `target\debug`. |
 | `-Incremental` | Rebuild only the driver crate and reuse the dependencies from the last full build. Keeps the dependency profiles and replaces only the driver crate's profile. The last full build must have used the same profile (dev or `-Release`); otherwise the script stops. |
 | `-MeasureUnprofiled` | Before the profiled build, time a separate clean build without `-Zself-profile`. Can't be combined with `-Incremental`. |
-| `-Toolchain <name>` | rustup toolchain. Default: `stage1`. |
+| `-Toolchain <name>` | rustup toolchain. Default: `nightly`. |
 | `-CargoArgs @(...)` | Extra arguments for the cargo build command, e.g. `@('--target-arch','arm64')` with `-WdkBuild`. Use `-Release` rather than `--release`/`--profile`. |
 | `-SelfProfileEvents <list>` | Value for `-Zself-profile-events`, e.g. `default,args`. |
 
@@ -110,9 +116,9 @@ the `*-dummy-traces` drivers.
 |---|---|
 | `-Drivers a,b` | Run only for these driver folders. Default: all of them. |
 | `-DriverSet All\|NonDummy\|Dummy` | Run all drivers, only the ones without dummy traces, or only the `*-dummy-traces` ones. Default: `All`. |
-| `-WdkBuild` | Run the same experiment with `cargo +stage1 wdk build`. |
+| `-WdkBuild` | Run the same experiment with `cargo +nightly wdk build`. |
 | `-Release` | Run the same experiment with the release profile. |
-| `-Toolchain <name>` | rustup toolchain. Default: `stage1`. |
+| `-Toolchain <name>` | rustup toolchain. Default: `nightly`. |
 | `-CargoArgs @(...)` | Extra cargo arguments, passed through. |
 | `-ResultsCsv <file>` | CSV file the results are appended to. Default: `build-experiment-results.csv`. |
 
@@ -130,7 +136,7 @@ driver.
 Example output:
 
 ```text
-Build times (cargo +stage1 build)
+Build times (cargo +nightly build)
 
 Driver                 Full build 1     Full build 2     Driver-only build 1 Driver-only build 2
 ------                 ------------     ------------     ------------------- -------------------
@@ -146,10 +152,9 @@ Run **Build experiment** from the repository's **Actions** tab using **Run workf
 Choose `All`, `NonDummy`, or `Dummy` for the driver set. The workflow runs one release build per
 driver and aggregates the profiles sequentially on a single Windows x64 runner using `-WdkBuild`.
 
-It builds `gurry/rust` commit `8a0ad0dea37c2692810b183d3c4aee60cb5f228f` from
-`add-codeview-annotation-intrinsic` locally and links the compiler and standard library as
-the `stage1` rustup toolchain. This revision provides the `core::hint::codeview_annotation`
-API required by the tracing samples. Nightly supplies the fallback Cargo.
+It installs the latest nightly Rust toolchain directly, including Cargo, rustc, and the
+standard library. The tracing samples use nightly's `core::os::windows::codeview_annotation`
+API; there is no compiler checkout, bootstrap, or locally linked toolchain.
 
 WDK 10.0.26100 uses the setup action from the same WDR branch as the dependencies;
 `cargo-wdk` is installed from that branch's checkout, not crates.io. LLVM 17.0.6 is installed
@@ -160,9 +165,9 @@ Download `build-experiment-2-wdk.csv` and `build-experiment-2-wdk-aggregate.txt`
 **build-experiment-2-wdk-results** artifact; completed drivers' results are uploaded even if a
 later driver fails.
 
-The custom compiler is built before measurement and is not included in the CSV timings.
-The workflow intentionally has no build matrix or driver build cache; compiler bootstrap
-and all driver measurements have a six-hour job limit.
+Toolchain installation happens before measurement and is not included in the CSV timings.
+The workflow intentionally has no build matrix or driver build cache; setup and all driver
+measurements have a six-hour job limit.
 ## run-build-experiment-2.ps1
 
 Runs one full release build per driver and then summarizes the profiles:
@@ -183,8 +188,8 @@ Runs one full release build per driver and then summarizes the profiles:
 |---|---|
 | `-Drivers a,b` | Run only for these driver folders. Default: all of them. |
 | `-DriverSet All\|NonDummy\|Dummy` | Run all drivers, only the ones without dummy traces, or only the `*-dummy-traces` ones. Default: `All`. |
-| `-WdkBuild` | Build with `cargo +stage1 wdk build --profile release` instead of `cargo +stage1 build --profile release`. |
-| `-Toolchain <name>` | rustup toolchain. Default: `stage1`. |
+| `-WdkBuild` | Build with `cargo +nightly wdk build --profile release` instead of `cargo +nightly build --profile release`. |
+| `-Toolchain <name>` | rustup toolchain. Default: `nightly`. |
 | `-CargoArgs @(...)` | Extra cargo arguments, passed through. |
 | `-ResultsCsv <file>` | CSV file the results are appended to. Default: `build-experiment-2-results.csv`. |
 | `-AggregateOutput <file>` | Text file for the aggregate tables. Default: `build-experiment-2-aggregate.txt`. |

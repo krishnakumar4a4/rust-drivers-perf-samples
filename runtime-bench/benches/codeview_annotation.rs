@@ -2,9 +2,11 @@
 // License: MIT OR Apache-2.0
 
 #![feature(codeview_annotation)]
+#![feature(core_os)]
 #![allow(clippy::needless_range_loop)]
 
-use std::hint::{CodeViewAnnotationArgs, black_box, codeview_annotation};
+use core::os::windows::{CodeViewAnnotationArgs, codeview_annotation};
+use std::hint::black_box;
 
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 
