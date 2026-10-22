@@ -8,6 +8,7 @@ measure how tracing affects compile time and binary size.
 | `sample-kmdf-no-tracing` | Baseline driver without tracing |
 | `sample-kmdf-with-traces`, `-with-10x-traces`, `-with-100x-traces` | 1x / 10x / 100x WPP trace calls |
 | `sample-kmdf-with-dummy-traces`, `-with-10x-dummy-traces`, `-with-100x-dummy-traces` | Same volume of calls without real tracing |
+| `sample-kmdf-safe-tracing-2` | 10 direct trace sites in each of `driver_entry` and `event_device_add` (20 total) |
 
 The build scripts work on every top-level folder that has a `Cargo.toml`.
 

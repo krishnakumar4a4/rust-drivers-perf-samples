@@ -1,0 +1,56 @@
+;
+; sample_kmdf_safe_tracing_2.inf
+;
+
+[Version]
+Signature   = "$WINDOWS NT$"
+Class       = System
+ClassGuid   = {4D36E97D-E325-11CE-BFC1-08002BE10318}
+Provider    = %ManufacturerName%
+CatalogFile = sample_kmdf_safe_tracing_2.cat
+DriverVer   = ; Set by stampinf
+PnpLockdown = 1
+
+[DestinationDirs]
+DefaultDestDir = 13
+
+[SourceDisksNames]
+1 = %DiskName%,,,""
+
+[SourceDisksFiles]
+sample_kmdf_safe_tracing_2.sys = 1,,
+
+[Manufacturer]
+%ManufacturerName% = Standard,NT$ARCH$.10.0...16299
+
+[Standard.NT$ARCH$.10.0...16299]
+%sample_kmdf_safe_tracing_2.DeviceDesc% = sample_kmdf_safe_tracing_2_Device, Root\sample_kmdf_safe_tracing_2
+
+[sample_kmdf_safe_tracing_2_Device.NT]
+CopyFiles = File_Copy
+
+[File_Copy]
+sample_kmdf_safe_tracing_2.sys
+
+[sample_kmdf_safe_tracing_2_Device.NT.Services]
+AddService = sample_kmdf_safe_tracing_2,%SPSVCINST_ASSOCSERVICE%,sample_kmdf_safe_tracing_2_Service_Inst
+
+[sample_kmdf_safe_tracing_2_Service_Inst]
+DisplayName   = %sample_kmdf_safe_tracing_2.SVCDESC%
+ServiceType   = 1
+StartType     = 3
+ErrorControl  = 1
+ServiceBinary = %13%\sample_kmdf_safe_tracing_2.sys
+
+[sample_kmdf_safe_tracing_2_Device.NT.Wdf]
+KmdfService = sample_kmdf_safe_tracing_2,sample_kmdf_safe_tracing_2_wdfsect
+
+[sample_kmdf_safe_tracing_2_wdfsect]
+KmdfLibraryVersion = $KMDFVERSION$
+
+[Strings]
+SPSVCINST_ASSOCSERVICE = 0x00000002
+ManufacturerName = "Rust for Drivers"
+DiskName = "KMDF Installation Disk"
+sample_kmdf_safe_tracing_2.DeviceDesc = "Sample KMDF Direct 20-Trace Device"
+sample_kmdf_safe_tracing_2.SVCDESC = "Sample KMDF Direct 20-Trace Service"

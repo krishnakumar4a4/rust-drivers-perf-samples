@@ -4,3 +4,5 @@ self-profile/
 __pycache__/
 temp/
 runtime-bench/target/
+
+stack-analysis/
