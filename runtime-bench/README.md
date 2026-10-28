@@ -90,9 +90,57 @@ loop or in its preheader. Family 7 measures common and rare branch behavior for
 a non-vectorizable loop, then compares automatic branch handling with manually
 unswitched vectorizable loops. Family 8 exercises memset, memcpy, and popcount
 loop patterns using the target's default CPU feature set. The benchmark keeps
-the exported entry points visible for binary inspection and uses `black_box` at
-the input and output boundaries. Run it under both the release and dev profiles
-to observe the annotation's impact with and without optimization.
+the exported entry points visible for binary inspection. Each timed call goes
+through a typed function pointer passed through `black_box` once before timing
+to prevent devirtualization and inlining into Criterion's loop. Inputs and calls
+are not wrapped in `black_box`; Criterion consumes each iteration's return value.
+The indirect call also keeps writes to output buffers observable. Run it under
+both the release and dev profiles to observe the annotation's impact with and
+without optimization. Previous direct-call baselines include different call and
+optimization-barrier overheads, so collect fresh baselines for comparisons.
+
+## Inspecting fixed-trip-count unrolling
+
+[examples/f6_unrolling.rs](examples/f6_unrolling.rs) extends the Family 6
+benchmark with three helpers that emit the same `f6.body` annotation: an ordinary
+function, an `#[inline(always)]` function, and an `#[inline(never)]` function.
+Each helper is called once per iteration of the same 16-element loop. The
+example checks every variant's result against a reference fold.
+
+Generate optimized assembly and LLVM IR, then run the example from the
+repository root:
+
+```powershell
+cargo +nightly rustc --manifest-path .\runtime-bench\Cargo.toml --release --example f6_unrolling -- --emit=asm,llvm-ir
+& .\runtime-bench\target\release\examples\f6_unrolling.exe
+```
+
+The generated files are
+`runtime-bench\target\release\examples\f6_unrolling.s` and
+`runtime-bench\target\release\examples\f6_unrolling.ll`.
+With rustc `1.101.0-nightly (1a2c4797e 2026-10-21)`, LLVM `23.1.4`, and the default
+`x86_64-pc-windows-msvc` target CPU, the release assembly shows:
+
+| Variant | Loop unrolled? | Assembly evidence |
+| --- | --- | --- |
+| `f6_base` | Fully | Fixed-offset loads through byte offset 60; no loop branch |
+| `f6_annot_in_loop` | No | Indexed load, counter increment, compare with 16, backward `jne` |
+| `f6_annot_in_loop_helper` | No | Ordinary helper is inlined; symbol aliases `f6_annot_in_loop` |
+| `f6_annot_in_loop_helper_inline` | No | Forced-inline helper is inlined; symbol aliases `f6_annot_in_loop` |
+| `f6_annot_in_loop_helper_noinline` | Fully | 16 helper calls and fixed-offset loads; no loop branch |
+| `f6_annot_preheader` | Fully | Annotation before straight-line loads; no loop branch |
+
+The IR declares `llvm.codeview.annotation` as `noduplicate`, preventing the
+direct or inlined annotation from being duplicated by unrolling. With
+`#[inline(never)]`, the annotation stays inside the helper; its callers can be
+duplicated without duplicating the intrinsic itself. The helper contains an
+annotation label followed by `retq`, and its IR retains `noinline`.
+
+Thus, preventing helper inlining enables unrolling in this example, but is not
+necessarily a performance improvement: it adds 16 real call/return pairs plus
+register-save and stack-frame overhead. The annotation also describes an
+address inside the helper rather than inside the loop function. These are
+compiler-specific observations, not a guarantee for other loops or toolchains.
 
 ## Interpreting measurements
 

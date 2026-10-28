@@ -320,12 +320,11 @@ fn codeview_annotation_benchmarks(c: &mut Criterion) {
     }
 
     let mut group = c.benchmark_group("family1_mir_inlining");
-    group.bench_function("base", |b| {
-        b.iter(|| black_box(f1_base(black_box(0xFEDC_BA98))))
-    });
-    group.bench_function("annotated", |b| {
-        b.iter(|| black_box(f1_annot(black_box(0xFEDC_BA98))))
-    });
+    // Hide the pointers before timing so calls stay indirect without per-call barriers.
+    for (name, function) in [("base", f1_base as fn(u32) -> u32), ("annotated", f1_annot)] {
+        let function = black_box(function);
+        group.bench_function(name, |b| b.iter(|| function(0xFEDC_BA98)));
+    }
     group.finish();
 
     for input in [0, 1, 0x1234_5678_9ABC_DEF0, u64::MAX] {
@@ -334,15 +333,14 @@ fn codeview_annotation_benchmarks(c: &mut Criterion) {
     }
 
     let mut group = c.benchmark_group("family2_llvm_inlining");
-    group.bench_function("base_multiple", |b| {
-        b.iter(|| black_box(f2_base(black_box(0xFEDC_BA98_7654_3210))))
-    });
-    group.bench_function("annotated_multiple", |b| {
-        b.iter(|| black_box(f2_annot(black_box(0xFEDC_BA98_7654_3210))))
-    });
-    group.bench_function("annotated_sole", |b| {
-        b.iter(|| black_box(f2_annot_sole(black_box(0xFEDC_BA98_7654_3210))))
-    });
+    for (name, function) in [
+        ("base_multiple", f2_base as fn(u64) -> u64),
+        ("annotated_multiple", f2_annot),
+        ("annotated_sole", f2_annot_sole),
+    ] {
+        let function = black_box(function);
+        group.bench_function(name, |b| b.iter(|| function(0xFEDC_BA98_7654_3210)));
+    }
     group.finish();
 
     const F3_LEN: usize = 4096;
@@ -359,36 +357,22 @@ fn codeview_annotation_benchmarks(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("family3_loop_vectorization");
     group.throughput(Throughput::Elements(F3_LEN as u64));
-    group.bench_function("base", |b| {
-        b.iter(|| {
-            f3_base(
-                black_box(&mut f3_expected),
-                black_box(&f3_a),
-                black_box(&f3_b),
-            );
-            black_box(&f3_expected);
-        })
-    });
-    group.bench_function("annotated_in_loop", |b| {
-        b.iter(|| {
-            f3_annot_in_loop(
-                black_box(&mut f3_in_loop),
-                black_box(&f3_a),
-                black_box(&f3_b),
-            );
-            black_box(&f3_in_loop);
-        })
-    });
-    group.bench_function("annotated_before_loop", |b| {
-        b.iter(|| {
-            f3_annot_before_loop(
-                black_box(&mut f3_before_loop),
-                black_box(&f3_a),
-                black_box(&f3_b),
-            );
-            black_box(&f3_before_loop);
-        })
-    });
+    for (name, function, output) in [
+        (
+            "base",
+            f3_base as fn(&mut [f32], &[f32], &[f32]),
+            &mut f3_expected,
+        ),
+        ("annotated_in_loop", f3_annot_in_loop, &mut f3_in_loop),
+        (
+            "annotated_before_loop",
+            f3_annot_before_loop,
+            &mut f3_before_loop,
+        ),
+    ] {
+        let function = black_box(function);
+        group.bench_function(name, |b| b.iter(|| function(output, &f3_a, &f3_b)));
+    }
     group.finish();
 
     let f6_input: [u32; 16] =
@@ -399,15 +383,14 @@ fn codeview_annotation_benchmarks(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("family6_fixed_trip_unrolling");
     group.throughput(Throughput::Elements(f6_input.len() as u64));
-    group.bench_function("base", |b| {
-        b.iter(|| black_box(f6_base(black_box(&f6_input))))
-    });
-    group.bench_function("annotated_in_loop", |b| {
-        b.iter(|| black_box(f6_annot_in_loop(black_box(&f6_input))))
-    });
-    group.bench_function("annotated_preheader", |b| {
-        b.iter(|| black_box(f6_annot_preheader(black_box(&f6_input))))
-    });
+    for (name, function) in [
+        ("base", f6_base as fn(&[u32; 16]) -> u32),
+        ("annotated_in_loop", f6_annot_in_loop),
+        ("annotated_preheader", f6_annot_preheader),
+    ] {
+        let function = black_box(function);
+        group.bench_function(name, |b| b.iter(|| function(&f6_input)));
+    }
     group.finish();
 
     const F7_LEN: usize = 4096;
@@ -445,51 +428,37 @@ fn codeview_annotation_benchmarks(c: &mut Criterion) {
     for (mode_name, mode) in [("common", true), ("rare", false)] {
         let mut f7_base_values = f7_seed.clone();
         let mut f7_annotated_values = f7_seed.clone();
-        group.bench_function(format!("original/{mode_name}/base"), |b| {
-            b.iter(|| black_box(f7_base(black_box(&mut f7_base_values), black_box(mode))))
-        });
-        group.bench_function(format!("original/{mode_name}/annotated"), |b| {
-            b.iter(|| {
-                black_box(f7_annot_rare_arm(
-                    black_box(&mut f7_annotated_values),
-                    black_box(mode),
-                ))
-            })
-        });
+        for (name, function, values) in [
+            (
+                "base",
+                f7_base as fn(&mut [u64], bool) -> u64,
+                &mut f7_base_values,
+            ),
+            ("annotated", f7_annot_rare_arm, &mut f7_annotated_values),
+        ] {
+            let function = black_box(function);
+            group.bench_function(format!("original/{mode_name}/{name}"), |b| {
+                b.iter(|| function(values, mode))
+            });
+        }
 
         let mut f7v_base_values = vec![0; F7_LEN];
         let mut f7v_annotated_values = vec![0; F7_LEN];
         let mut f7v_manual_values = vec![0; F7_LEN];
-        group.bench_function(format!("vectorizable/{mode_name}/base"), |b| {
-            b.iter(|| {
-                f7v_base(
-                    black_box(&mut f7v_base_values),
-                    black_box(&f7v_input),
-                    black_box(mode),
-                );
-                black_box(&f7v_base_values);
-            })
-        });
-        group.bench_function(format!("vectorizable/{mode_name}/annotated"), |b| {
-            b.iter(|| {
-                f7v_annot(
-                    black_box(&mut f7v_annotated_values),
-                    black_box(&f7v_input),
-                    black_box(mode),
-                );
-                black_box(&f7v_annotated_values);
-            })
-        });
-        group.bench_function(format!("vectorizable/{mode_name}/manual"), |b| {
-            b.iter(|| {
-                f7v_manual(
-                    black_box(&mut f7v_manual_values),
-                    black_box(&f7v_input),
-                    black_box(mode),
-                );
-                black_box(&f7v_manual_values);
-            })
-        });
+        for (name, function, values) in [
+            (
+                "base",
+                f7v_base as fn(&mut [u32], &[u32], bool),
+                &mut f7v_base_values,
+            ),
+            ("annotated", f7v_annot, &mut f7v_annotated_values),
+            ("manual", f7v_manual, &mut f7v_manual_values),
+        ] {
+            let function = black_box(function);
+            group.bench_function(format!("vectorizable/{mode_name}/{name}"), |b| {
+                b.iter(|| function(values, &f7v_input, mode))
+            });
+        }
     }
     group.finish();
 
@@ -521,45 +490,51 @@ fn codeview_annotation_benchmarks(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("family8_memory_idioms");
     group.throughput(Throughput::Bytes(F8_LEN as u64));
-    group.bench_function("fill/base", |b| {
-        b.iter(|| {
-            f8_fill_base(black_box(&mut f8_fill_expected), black_box(F8_FILL_VALUE));
-            black_box(&f8_fill_expected);
-        })
-    });
-    group.bench_function("fill/annotated_in_loop", |b| {
-        b.iter(|| {
-            f8_fill_annot(black_box(&mut f8_fill_annotated), black_box(F8_FILL_VALUE));
-            black_box(&f8_fill_annotated);
-        })
-    });
-    group.bench_function("fill/annotated_before_loop", |b| {
-        b.iter(|| {
-            f8_fill_annot_before(black_box(&mut f8_fill_before), black_box(F8_FILL_VALUE));
-            black_box(&f8_fill_before);
-        })
-    });
-    group.bench_function("copy/base", |b| {
-        b.iter(|| {
-            f8_copy_base(black_box(&mut f8_copy_expected), black_box(&f8_source));
-            black_box(&f8_copy_expected);
-        })
-    });
-    group.bench_function("copy/annotated_in_loop", |b| {
-        b.iter(|| {
-            f8_copy_annot(black_box(&mut f8_copy_annotated), black_box(&f8_source));
-            black_box(&f8_copy_annotated);
-        })
-    });
+    for (name, function, output) in [
+        (
+            "fill/base",
+            f8_fill_base as fn(&mut [u8], u8),
+            &mut f8_fill_expected,
+        ),
+        (
+            "fill/annotated_in_loop",
+            f8_fill_annot,
+            &mut f8_fill_annotated,
+        ),
+        (
+            "fill/annotated_before_loop",
+            f8_fill_annot_before,
+            &mut f8_fill_before,
+        ),
+    ] {
+        let function = black_box(function);
+        group.bench_function(name, |b| b.iter(|| function(output, F8_FILL_VALUE)));
+    }
+    for (name, function, output) in [
+        (
+            "copy/base",
+            f8_copy_base as fn(&mut [u8], &[u8]),
+            &mut f8_copy_expected,
+        ),
+        (
+            "copy/annotated_in_loop",
+            f8_copy_annot,
+            &mut f8_copy_annotated,
+        ),
+    ] {
+        let function = black_box(function);
+        group.bench_function(name, |b| b.iter(|| function(output, &f8_source)));
+    }
     group.finish();
 
     let mut group = c.benchmark_group("family8_popcount");
-    group.bench_function("base", |b| {
-        b.iter(|| black_box(f8_popcount_base(black_box(F8_POPCOUNT_INPUT))))
-    });
-    group.bench_function("annotated", |b| {
-        b.iter(|| black_box(f8_popcount_annot(black_box(F8_POPCOUNT_INPUT))))
-    });
+    for (name, function) in [
+        ("base", f8_popcount_base as fn(u64) -> u32),
+        ("annotated", f8_popcount_annot),
+    ] {
+        let function = black_box(function);
+        group.bench_function(name, |b| b.iter(|| function(F8_POPCOUNT_INPUT)));
+    }
     group.finish();
 }
 
