@@ -1,0 +1,28 @@
+[package]
+name = "trace-stack-app"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Build-only WPP kernel tracing sample for assembly stack inspection"
+
+[package.metadata.wdk.driver-model]
+driver-type = "KMDF"
+kmdf-version-major = 1
+target-kmdf-version-minor = 33
+
+[workspace]
+
+[dependencies]
+wpp = { git = "https://github.com/krishnakumar4a4/wpp", branch = "main", features = ["kernel_mode"] }
+
+[build-dependencies]
+wdk-build = { git = "https://github.com/krishnakumar4a4/windows-drivers-rs", branch = "wdf-wpp-rust-native-frontend-impl-3" }
+
+[profile.dev]
+panic = "abort"
+lto = true
+
+[profile.release]
+debug = 2
+panic = "abort"
+lto = true
